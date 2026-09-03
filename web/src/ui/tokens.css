@@ -1,0 +1,737 @@
+/*
+ * Cyanometer — the design system. See DESIGN.md §3.
+ *
+ * Named for de Saussure's 1789 instrument: a ring of hand-dyed blue swatches
+ * held against the sky to read its blueness as a number. Here the ring reads
+ * retrievability. The blue ramp is data, never decoration — a colour that is
+ * not encoding recall probability or signalling due-ness does not appear.
+ */
+
+:root {
+  /* Ground and ink */
+  --ground: #0b2130;
+  --ground-lift: #12384a;
+  --hairline: #1e4a5e;
+  --ink: #eaf0f0;
+  --ink-quiet: #7fa0ae;
+
+  /* The one signal. Brass means act now, and means nothing else. */
+  --brass: #e3b23c;
+  --brass-dim: #6b5320;
+
+  /*
+   * The cyanometer ramp: one hue, dark to light, so it reads as a single
+   * sequential scale. Stepped for even lightness (.15 / .29 / .51 / .78) and
+   * re-stepped from the first draft so every mark clears 3:1 on the ground —
+   * a "faded" mark has to stay legible to mean anything.
+   */
+  --r-0: #2c7595; /* 3.2:1  — faded */
+  --r-1: #4e9cbb; /* 5.3:1 */
+  --r-2: #8ac6d9; /* 8.8:1 */
+  --r-3: #d3e9ef; /* 13.1:1 — fresh */
+
+  /* Type */
+  --sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --serif: 'Literata Variable', Georgia, 'Times New Roman', serif;
+
+  --t-cue: 2.99rem;
+  --t-content: 1.25rem;
+  --t-ui: 1rem;
+  --t-num: 0.875rem;
+  --t-label: 0.8rem;
+
+  /* Space, on a 4px grid */
+  --s1: 0.25rem;
+  --s2: 0.5rem;
+  --s3: 0.75rem;
+  --s4: 1rem;
+  --s5: 1.5rem;
+  --s6: 2rem;
+  --s7: 3rem;
+
+  --measure: 34rem;
+  --radius: 3px;
+
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  color-scheme: dark;
+}
+
+/* -------------------------------------------------------------- reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--t-ui);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  /* No rubber-band while reviewing, and no double-tap zoom on the grade bar. */
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Focus must stay visible — this app is also used with a keyboard. */
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+::selection {
+  background: var(--brass);
+  color: var(--ground);
+}
+
+/* -------------------------------------------------------------- layout */
+
+.app {
+  max-width: var(--measure);
+  margin-inline: auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* One 44px strip. Title bars never stack. */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 44px;
+  padding: var(--safe-t) var(--s4) 0;
+  color: var(--ink-quiet);
+  font-size: var(--t-num);
+}
+
+.strip__spacer {
+  flex: 1;
+}
+
+.strip__count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Actions live in the bottom third, above the home indicator. */
+.dock {
+  position: sticky;
+  bottom: 0;
+  padding: var(--s4) var(--s4) calc(var(--s4) + var(--safe-b));
+  background: linear-gradient(to top, var(--ground) 72%, transparent);
+}
+
+/* -------------------------------------------------------------- controls */
+
+.action {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  border-radius: var(--radius);
+  background: var(--brass);
+  color: #2a1f06;
+  font-weight: 600;
+  font-size: var(--t-ui);
+}
+
+.action--quiet {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+}
+
+.action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.link {
+  color: var(--ink-quiet);
+  text-decoration: none;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 1px;
+}
+
+/* -------------------------------------------------------------- type */
+
+.label {
+  font-size: var(--t-label);
+  font-weight: 500;
+  color: var(--ink-quiet);
+  letter-spacing: 0.01em;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-num);
+}
+
+.content {
+  font-family: var(--serif);
+  font-size: var(--t-content);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+/* The one centred element in the app: the specimen under glass. */
+.cue {
+  font-family: var(--serif);
+  font-size: var(--t-cue);
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* -------------------------------------------------------------- motion */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* -------------------------------------------------------------- the ramp */
+
+.ramp {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  flex: none;
+}
+
+.ramp__tick {
+  display: block;
+  width: 4px;
+  height: 12px;
+  border-radius: 1px;
+}
+
+/* The hero histogram: thin marks, a 2px gap, ends anchored to the baseline. */
+.cyano {
+  margin: 0;
+}
+
+.cyano__plot {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 96px;
+}
+
+.cyano__bar {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  padding: 0;
+  border-radius: 2px;
+}
+
+.cyano__bar--read {
+  background: rgba(127, 160, 174, 0.14);
+}
+
+.cyano__fill {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+}
+
+.cyano__axis {
+  display: flex;
+  gap: 2px;
+  margin-top: var(--s2);
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--s2);
+}
+
+.cyano__tick {
+  flex: 1;
+  font-size: var(--t-label);
+  color: var(--ink-quiet);
+  text-align: center;
+}
+
+.cyano__readout {
+  margin: var(--s3) 0 0;
+  font-size: var(--t-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-quiet);
+}
+
+/* ------------------------------------------------------------ the review */
+
+.strip__back {
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--ink-quiet);
+  padding: 0 var(--s2);
+  margin-left: calc(var(--s2) * -1);
+}
+
+.progress {
+  height: 2px;
+  background: var(--hairline);
+  margin: var(--s2) var(--s4) 0;
+}
+
+.progress__done {
+  height: 100%;
+  background: var(--r-2);
+  transition: width 180ms var(--ease);
+}
+
+/* The cue sits alone in the optical centre; actions stay in the bottom third. */
+.stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s4);
+  padding: var(--s6) var(--s4);
+  text-align: center;
+}
+
+.stage__label {
+  margin: 0;
+}
+
+.fold {
+  margin: var(--s5) 0 0;
+  font-size: var(--t-label);
+  color: var(--ink-quiet);
+  border-top: 1px dashed var(--hairline);
+  padding-top: var(--s3);
+  width: 100%;
+  max-width: 18rem;
+}
+
+/* The unfold: the cue docks to the top and the sides arrive beneath it. */
+.docked {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--hairline);
+  animation: dock 220ms var(--ease) both;
+}
+
+.docked__cue {
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  overflow-wrap: anywhere;
+}
+
+@keyframes dock {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.reveal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  /* Centred while it fits, top-aligned once it overflows and starts scrolling. */
+  justify-content: safe center;
+  padding: var(--s2) var(--s4);
+  overflow-y: auto;
+}
+
+.row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--s4) 0 var(--s4) var(--s3);
+  border-bottom: 1px solid var(--hairline);
+  border-left: 2px solid transparent;
+  animation: unfold 200ms var(--ease) both;
+  animation-delay: calc(var(--i) * 40ms);
+}
+
+@keyframes unfold {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .docked {
+    animation: fade 1ms both;
+  }
+  @keyframes fade {
+    from {
+      opacity: 1;
+    }
+  }
+}
+
+.row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.row__value {
+  display: block;
+}
+
+.row--context {
+  opacity: 0.55;
+}
+
+.row--missed {
+  border-left-color: var(--brass);
+  opacity: 0.6;
+}
+
+.row__note {
+  font-style: italic;
+}
+
+/* One press applies to every unmissed row. */
+.grades {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--s2);
+}
+
+.grade {
+  min-height: 52px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--ground-lift);
+  font-size: var(--t-num);
+  font-weight: 500;
+}
+
+.grade:first-child {
+  border-color: var(--brass-dim);
+  color: var(--brass);
+}
+
+.side-img {
+  display: block;
+  max-width: 100%;
+  max-height: 40dvh;
+  border-radius: var(--radius);
+}
+
+.side-img--inline {
+  max-height: 2.5rem;
+}
+
+/* --------------------------------------------------------------- today */
+
+.wordmark {
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.today {
+  flex: 1;
+  padding: var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
+
+.today__hero {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--s2);
+}
+
+.decks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.deck {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  text-align: left;
+  padding: var(--s4) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.deck__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex: none;
+}
+
+.deck__name {
+  font-size: 1.125rem;
+}
+
+.deck__due {
+  color: var(--brass);
+}
+
+.deck__due--none {
+  color: var(--ink-quiet);
+}
+
+.rest {
+  margin: var(--s3) 0 0;
+  text-align: center;
+  color: var(--ink-quiet);
+  font-size: var(--t-num);
+}
+
+.add-deck {
+  margin-top: var(--s2);
+}
+
+/* ---------------------------------------------------------------- cards */
+
+.cards {
+  flex: 1;
+  padding: 0 var(--s4);
+  overflow-y: auto;
+}
+
+.cards ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.card-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  text-align: left;
+  padding: var(--s4) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.card-row__text {
+  font-size: var(--t-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-row__ramps {
+  display: flex;
+  gap: var(--s2);
+  flex: none;
+}
+
+/* --------------------------------------------------------------- editor */
+
+.editor {
+  flex: 1;
+  padding: var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  overflow-y: auto;
+}
+
+.field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.field__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+}
+
+.field__input,
+.field__label-input {
+  display: block;
+  width: 100%;
+  background: var(--ground-lift);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: var(--s3);
+  resize: vertical;
+}
+
+.field__label-input {
+  width: 12rem;
+  padding: var(--s2) var(--s3);
+}
+
+.field__input:focus,
+.field__label-input:focus {
+  outline: 2px solid var(--brass);
+  outline-offset: -1px;
+}
+
+.field__schedule {
+  display: flex;
+  gap: var(--s4);
+  align-items: baseline;
+  margin: var(--s2) 0 0;
+  color: var(--ink-quiet);
+}
+
+.field__image {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  align-items: flex-start;
+}
+
+.field__pick {
+  display: inline-block;
+  width: auto;
+  padding: var(--s3) var(--s4);
+  min-height: 44px;
+  line-height: 1.6;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.toggle input {
+  accent-color: var(--brass);
+  width: 18px;
+  height: 18px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------- deck settings */
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.choice {
+  display: block;
+  text-align: left;
+  padding: var(--s3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--ground-lift);
+}
+
+.choice--on {
+  border-color: var(--brass);
+}
+
+.choice__title {
+  display: block;
+  margin-bottom: var(--s1);
+}
+
+.choice__detail {
+  display: block;
+  font-size: var(--t-label);
+  color: var(--ink-quiet);
+  line-height: 1.45;
+}
+
+.field__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s2);
+}
+
+.field__row .field__input {
+  flex: 1;
+}
+
+.rest--left {
+  text-align: left;
+  margin-bottom: var(--s2);
+}
+
+.sync {
+  font-size: var(--t-label);
+  color: var(--ink-quiet);
+}
+
+.update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  background: var(--ground-lift);
+  border-bottom: 1px solid var(--brass-dim);
+  font-size: var(--t-num);
+}
+
+.update__actions {
+  display: flex;
+  gap: var(--s4);
+  flex: none;
+}
