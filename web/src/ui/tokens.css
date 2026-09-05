@@ -13,7 +13,9 @@
   --ground-lift: #12384a;
   --hairline: #1e4a5e;
   --ink: #eaf0f0;
-  --ink-quiet: #7fa0ae;
+  /* Clears 4.5:1 on the ground (6.53) and on the lifted surface (4.92), so it
+     is safe as body text on both. It sat at 4.46 on `ground-lift`, just under. */
+  --ink-quiet: #88a8b6;
 
   /* The one signal. Brass means act now, and means nothing else. */
   --brass: #e3b23c;
@@ -34,7 +36,10 @@
 
   /* Type */
   --sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
-  --serif: 'Literata Variable', Georgia, 'Times New Roman', serif;
+  /* Literata has no CJK coverage; without an explicit fallback a kanji deck
+     drops to whatever the platform picks, which is rarely a serif. */
+  --serif: 'Literata Variable', Georgia, 'Hiragino Mincho ProN', 'Yu Mincho',
+    'Noto Serif CJK JP', 'Songti SC', 'Times New Roman', serif;
 
   --t-cue: 2.99rem;
   --t-content: 1.25rem;
@@ -56,6 +61,8 @@
 
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
 
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 
@@ -124,6 +131,8 @@ textarea {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  /* Landscape on a notched phone puts the sensor housing over the column. */
+  padding-inline: var(--safe-l) var(--safe-r);
 }
 
 /* One 44px strip. Title bars never stack. */
@@ -216,13 +225,26 @@ textarea {
 
 /* -------------------------------------------------------------- motion */
 
+/*
+ * §3: reduced motion keeps the cross-fade and drops the transform and the
+ * stagger. One block, no `!important` — a second block trying to restore a
+ * usable duration would only lose to it.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation-name: fade;
+    animation-duration: 120ms;
+    animation-delay: 0ms;
+    animation-iteration-count: 1;
+    transition-duration: 120ms;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
   }
 }
 
@@ -242,7 +264,10 @@ textarea {
   border-radius: 1px;
 }
 
-/* The hero histogram: thin marks, a 2px gap, ends anchored to the baseline. */
+/*
+ * The hero histogram: thin marks, a 2px gap between them, 4px rounded tops and
+ * square feet on the baseline. Twenty bins across the four ramp bands.
+ */
 .cyano {
   margin: 0;
 }
@@ -256,17 +281,12 @@ textarea {
 
 .cyano__bar {
   flex: 1;
+  /* Never wider than a mark should be; the leftover in the slot stays as air. */
+  max-width: 24px;
   height: 100%;
   display: flex;
   align-items: flex-end;
   padding: 0;
-  border-radius: 2px;
-}
-
-.cyano__bar--read {
-  /* Derived from the token rather than a frozen copy of it, so this tracks a
-     palette swap instead of quietly keeping the old hue. */
-  background: color-mix(in srgb, var(--ink-quiet) 14%, transparent);
 }
 
 .cyano__fill {
@@ -276,11 +296,28 @@ textarea {
   border-radius: 4px 4px 0 0;
 }
 
+/* The baseline is a hairline, so an empty bin reads as zero rather than absent. */
+.cyano__scale {
+  position: relative;
+  height: 2px;
+  margin-top: var(--s2);
+  background: var(--hairline);
+}
+
+/*
+ * The one brass mark on this screen: the stretch of the scale that is already
+ * due. A rule under the axis rather than a bar colour, so it stays contiguous
+ * and no single bar has to be part brass and part ramp.
+ */
+.cyano__due {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--brass);
+}
+
 .cyano__axis {
   display: flex;
   gap: 2px;
-  margin-top: var(--s2);
-  border-top: 1px solid var(--hairline);
   padding-top: var(--s2);
 }
 
@@ -314,26 +351,27 @@ textarea {
   margin: var(--s2) var(--s4) 0;
 }
 
+/* Session progress is neither retrievability nor due-ness, so it is painted in
+   ink, not off the ramp: the ramp is data (§3). */
 .progress__done {
   height: 100%;
-  background: var(--r-2);
+  background: var(--ink-quiet);
   transition: width 180ms var(--ease);
 }
 
-/* The cue sits alone in the optical centre; actions stay in the bottom third. */
-.stage {
+/*
+ * Everything else that has the screen to itself — an empty deck, a finished
+ * session — is left-aligned like the rest of the app. An invitation set flush
+ * left reads as an instrument; centred, it reads as a mood (§8).
+ */
+.state {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  gap: var(--s4);
+  align-items: flex-start;
+  gap: var(--s3);
   padding: var(--s6) var(--s4);
-  text-align: center;
-}
-
-.stage__label {
-  margin: 0;
 }
 
 .fold {
@@ -346,37 +384,81 @@ textarea {
   max-width: 18rem;
 }
 
-/* The unfold: the cue docks to the top and the sides arrive beneath it. */
-.docked {
+/*
+ * The unfold. One element in two states: a specimen alone in the optical
+ * centre, and a docked caption under the top strip. The travel between them is
+ * a FLIP played in CueCard.tsx — these rules only describe the two ends.
+ *
+ * The cue is the one centred thing in the whole app (§3); everything else,
+ * including the docked state, is flush left.
+ */
+.cuecard {
+  flex: 1;
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s4);
+  padding: var(--s6) var(--s4);
+  text-align: center;
+}
+
+.cuecard__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: var(--s3);
+}
+
+.cuecard__value {
+  font-family: var(--serif);
+  font-size: var(--t-cue);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  /* The FLIP scales this box, so it must be its own layout box to measure. */
+  display: inline-block;
+}
+
+.cuecard--docked {
+  flex: none;
+  align-items: stretch;
+  gap: 0;
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--hairline);
-  animation: dock 220ms var(--ease) both;
+  text-align: left;
 }
 
-.docked__cue {
-  font-family: var(--serif);
+.cuecard--docked .cuecard__inner {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--s3);
+}
+
+.cuecard--docked .cuecard__value {
   font-size: 1.5rem;
-  overflow-wrap: anywhere;
+  line-height: 1.3;
+  /* A long cue truncates here rather than shoving its label off the row. The
+     whole side was on screen a moment ago; this line is a reminder of it. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@keyframes dock {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
+.cuecard--docked .cuecard__label {
+  flex: none;
 }
 
+/* The sides arrive directly beneath the cue they answer to, not floating in the
+   middle of the screen. Actions keep the bottom third to themselves (§3). */
 .reveal {
   flex: 1;
   display: flex;
   flex-direction: column;
-  /* Centred while it fits, top-aligned once it overflows and starts scrolling. */
-  justify-content: safe center;
+  justify-content: flex-start;
   padding: var(--s2) var(--s4);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .row {
@@ -394,18 +476,6 @@ textarea {
   from {
     opacity: 0;
     transform: translateY(6px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .row,
-  .docked {
-    animation: fade 1ms both;
-  }
-  @keyframes fade {
-    from {
-      opacity: 1;
-    }
   }
 }
 
@@ -450,10 +520,8 @@ textarea {
   font-weight: 500;
 }
 
-.grade:first-child {
-  border-color: var(--brass-dim);
-  color: var(--brass);
-}
+/* The four grades are peers. "Again" is a judgement, not a call to act now,
+   so it carries no brass — see §3 principle 3. */
 
 .side-img {
   display: block;
@@ -528,7 +596,6 @@ textarea {
 
 .rest {
   margin: var(--s3) 0 0;
-  text-align: center;
   color: var(--ink-quiet);
   font-size: var(--t-num);
 }
@@ -543,6 +610,7 @@ textarea {
   flex: 1;
   padding: 0 var(--s4);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .cards ul {
@@ -562,8 +630,12 @@ textarea {
   border-bottom: 1px solid var(--hairline);
 }
 
+/* Card content at list scale: the serif is the point, the 1.25rem body size is
+   not. Set both here rather than overriding `.content` from a distance. */
 .card-row__text {
+  font-family: var(--serif);
   font-size: var(--t-ui);
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -584,6 +656,7 @@ textarea {
   flex-direction: column;
   gap: var(--s5);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .field__head {
@@ -611,9 +684,12 @@ textarea {
   resize: vertical;
 }
 
+/* An editable control, not a label: full ink and readable at input size. */
 .field__label-input {
   width: 12rem;
   padding: var(--s2) var(--s3);
+  font-size: var(--t-ui);
+  color: var(--ink);
 }
 
 .field__input:focus,
@@ -637,7 +713,9 @@ textarea {
   align-items: flex-start;
 }
 
-.field__pick {
+/* Sized as its own control rather than relying on sitting after `.action`
+   in source order. */
+.field__pick.field__pick {
   display: inline-block;
   width: auto;
   padding: var(--s3) var(--s4);
@@ -652,7 +730,7 @@ textarea {
 }
 
 .toggle input {
-  accent-color: var(--brass);
+  accent-color: var(--ink-quiet);
   width: 18px;
   height: 18px;
 }
@@ -675,6 +753,7 @@ textarea {
   flex-direction: column;
   gap: var(--s2);
   margin-top: var(--s2);
+  width: 100%;
 }
 
 .choice {
@@ -686,8 +765,10 @@ textarea {
   background: var(--ground-lift);
 }
 
+/* Selection is a state, not an action. Ink marks it; brass would not. */
 .choice--on {
-  border-color: var(--brass);
+  border-color: var(--ink-quiet);
+  box-shadow: inset 0 0 0 1px var(--ink-quiet);
 }
 
 .choice__title {
@@ -713,9 +794,8 @@ textarea {
   flex: 1;
 }
 
-.rest--left {
-  text-align: left;
-  margin-bottom: var(--s2);
+.rest--tight {
+  margin: 0 0 var(--s2);
 }
 
 .sync {
@@ -738,4 +818,79 @@ textarea {
   display: flex;
   gap: var(--s4);
   flex: none;
+}
+
+/* Undo sits with the actions, in the bottom third and under the thumb (§3),
+   but quiet: it is a way back, not the thing to do next. */
+.undo {
+  margin: 0 0 var(--s3);
+}
+
+/* ------------------------------------------------------------- settings */
+
+/*
+ * Section heads. Interface type at interface size — the serif belongs to card
+ * content and nowhere else (§3), and there is no eyebrow above them.
+ */
+.settings__head {
+  margin: 0 0 var(--s2);
+  font-size: var(--t-ui);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.editor section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s3);
+}
+
+.editor section .rest {
+  margin: 0;
+  max-width: 34em;
+  line-height: 1.5;
+}
+
+.choices--row {
+  flex-direction: row;
+  width: 100%;
+}
+
+.choice--slim {
+  flex: 1;
+  text-align: center;
+  padding: var(--s3) var(--s2);
+}
+
+.choice[disabled] {
+  opacity: 0.5;
+}
+
+.settings__reset {
+  align-self: flex-start;
+}
+
+/* Search sits above the list it filters, not in the title bar: title bars
+   never stack (§3). */
+.search {
+  padding: 0 var(--s4) var(--s3);
+}
+
+.search__input {
+  display: block;
+  width: 100%;
+  background: var(--ground-lift);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: var(--s3);
+}
+
+.search__input::placeholder {
+  color: var(--ink-quiet);
+}
+
+.link[disabled] {
+  opacity: 0.35;
+  cursor: default;
 }

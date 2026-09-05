@@ -8,7 +8,9 @@
 import { useNavigate } from 'react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Deck, Memory } from '@eidet/shared'
+import { DEFAULT_PARAMS } from '@eidet/shared'
 import { db } from '../db/db.ts'
+import { useCurrentParams } from '../db/useParams.ts'
 import { startSession } from '../session/session.ts'
 import { Ramp, memoryRamp, rampWord } from '../ui/Ramp.tsx'
 import { Cyanometer } from '../ui/Cyanometer.tsx'
@@ -21,6 +23,11 @@ export function Today() {
   const { status, lastSyncedAt } = useSyncStatus()
   const decks = useLiveQuery(() => db.decks.filter((d) => d.deletedAt === null).sortBy('order'), [])
   const memories = useLiveQuery(() => db.memories.toArray(), [])
+  // The hero's due boundary is the retention target in force, so the chart
+  // follows a change made in settings. Deliberately not blocking on it: on a
+  // first run the set does not exist yet, and the home screen should not wait
+  // for one to be written before it will draw.
+  const params = useCurrentParams()
 
   if (!decks || !memories) return <div className="app" />
 
@@ -39,19 +46,25 @@ export function Today() {
       <div className="strip">
         <span className="wordmark">eidet</span>
         <span className="strip__spacer" />
-        <span className="sync">
+        {/* The sync line is also the way in to settings: the state and the
+            place to do something about it are the same thing. */}
+        <button className="link sync" onClick={() => navigate('/settings')}>
           {status === 'offline'
             ? 'Saved here'
             : lastSyncedAt
               ? `Synced ${formatWhen(lastSyncedAt, now)}`
               : 'Syncing'}
-        </span>
+        </button>
       </div>
 
       <div className="today">
         {memories.length > 0 ? (
           <section className="today__hero">
-            <Cyanometer memories={memories} now={now} />
+            <Cyanometer
+              memories={memories}
+              now={now}
+              requestRetention={params?.requestRetention ?? DEFAULT_PARAMS.request_retention}
+            />
           </section>
         ) : null}
 
@@ -96,11 +109,12 @@ function DeckRow({ deck, memories, now }: { deck: Deck; memories: Memory[]; now:
   const navigate = useNavigate()
   const mine = memories.filter((m) => m.deckId === deck.id)
   const due = mine.filter((m) => m.due <= now).length
-  const ahead = mine.filter((m) => m.due > now)
 
-  // The deck's typical strength, as one mark. Per-deck shape without a second
-  // bar chart arguing with the hero.
-  const steps = ahead.map((m) => memoryRamp(m, now)).sort((a, b) => a - b)
+  // The deck's typical strength, as one mark. Taken over every side, not only
+  // the ones not yet due: a side is scheduled for the moment its recall hits
+  // the retention target, so the not-due sides are all fresh by construction
+  // and a mark computed from them alone reads the same for every deck.
+  const steps = mine.map((m) => memoryRamp(m, now)).sort((a, b) => a - b)
   const median = steps.length > 0 ? steps[Math.floor(steps.length / 2)]! : 0
 
   return (
@@ -108,7 +122,7 @@ function DeckRow({ deck, memories, now }: { deck: Deck; memories: Memory[]; now:
       <button className="deck" onClick={() => navigate(`/deck/${deck.id}`)}>
         <span className="deck__name">{deck.name}</span>
         <span className="deck__meta">
-          {ahead.length > 0 ? <Ramp step={median} label={`typically ${rampWord(median)}`} /> : null}
+          {mine.length > 0 ? <Ramp step={median} label={`typically ${rampWord(median)}`} /> : null}
           <span className={due > 0 ? 'num deck__due' : 'num deck__due deck__due--none'}>
             {due > 0 ? `${due} due` : `${mine.length} sides`}
           </span>
@@ -120,7 +134,7 @@ function DeckRow({ deck, memories, now }: { deck: Deck; memories: Memory[]; now:
 
 function Empty({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="stage">
+    <div className="state">
       <p className="content">No decks yet.</p>
       <p className="label">A deck is a set of cards that share the same shape.</p>
       <button className="action" onClick={onAdd}>

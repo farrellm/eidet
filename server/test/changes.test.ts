@@ -147,3 +147,55 @@ describe('push is idempotent', () => {
     expect(pull(db, 0).decks).toHaveLength(0)
   })
 })
+
+/**
+ * A client pages through a backlog by feeding the returned `seq` back in. If
+ * that number does not advance, the client re-pulls the same page forever —
+ * which is what happened while the high-water mark was read off the mapped
+ * objects, because `Review` deliberately carries no `seq` field.
+ */
+describe('paging', () => {
+  const PAGE = 2000
+
+  it('advances the cursor through a review backlog larger than one page', () => {
+    const reviews = Array.from({ length: PAGE + 5 }, (_, i) =>
+      review({ id: `r${i}`, reviewedAt: 5000 + i }),
+    )
+    push(db, { reviews })
+
+    const first = pull(db, 0)
+    expect(first.reviews).toHaveLength(PAGE)
+    expect(first.seq).toBeGreaterThan(0)
+
+    const second = pull(db, first.seq)
+    expect(second.reviews).toHaveLength(5)
+    expect(second.seq).toBeGreaterThan(first.seq)
+
+    // Every row arrived exactly once across the two pages.
+    const ids = [...first.reviews, ...second.reviews].map((r) => r.id)
+    expect(new Set(ids).size).toBe(PAGE + 5)
+
+    // And the client has converged: another pull returns nothing new.
+    expect(pull(db, second.seq).reviews).toHaveLength(0)
+  })
+
+  it('does not skip rows when a table other than decks or cards fills the page', () => {
+    // paramSets and blobs page too, and were once absent from the "is this
+    // page full?" test — so the cursor jumped to the server's current seq and
+    // the remainder was never handed over.
+    const sets = Array.from({ length: PAGE + 5 }, (_, i) => ({
+      hash: `h${i}`,
+      w: [0.1],
+      requestRetention: 0.9,
+      learningSteps: ['1m', '10m'],
+      createdAt: 1000 + i,
+    }))
+    push(db, { paramSets: sets })
+
+    const first = pull(db, 0)
+    expect(first.paramSets).toHaveLength(PAGE)
+    const second = pull(db, first.seq)
+    expect(second.paramSets).toHaveLength(5)
+    expect(pull(db, second.seq).paramSets).toHaveLength(0)
+  })
+})

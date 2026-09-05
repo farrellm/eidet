@@ -23,7 +23,22 @@ import { currentSeq, nextSeq } from './db.ts'
 const PAGE = 2000
 
 export function pull(db: DatabaseSync, since: number): PullResponse {
-  const rows = <T>(sql: string) => db.prepare(sql).all(since, PAGE) as T[]
+  /*
+   * Every table pages independently, so the cursor handed back has to be the
+   * high-water mark of what this page actually returned. Read it off the raw
+   * rows: `seq` is a storage column and most of the shared types deliberately
+   * do not carry it, so deriving the mark from the mapped objects silently
+   * scored reviews and paramSets as 0 and pinned the cursor at `since` — a
+   * client with a review backlog re-pulled the same page forever.
+   */
+  let maxSeq = since
+  let full = false
+  const rows = <T>(sql: string): T[] => {
+    const page = db.prepare(sql).all(since, PAGE) as (T & { seq: number })[]
+    for (const r of page) if (r.seq > maxSeq) maxSeq = r.seq
+    if (page.length === PAGE) full = true
+    return page
+  }
 
   const decks = rows<Record<string, unknown>>(
     'SELECT * FROM decks WHERE seq > ? ORDER BY seq LIMIT ?',
@@ -78,6 +93,7 @@ export function pull(db: DatabaseSync, since: number): PullResponse {
       hash: r.hash as string,
       w: JSON.parse(r.w as string),
       requestRetention: r.requestRetention as number,
+      learningSteps: JSON.parse(r.learningSteps as string),
       createdAt: r.createdAt as number,
     }),
   )
@@ -93,17 +109,10 @@ export function pull(db: DatabaseSync, since: number): PullResponse {
     createdAt: r.createdAt as number,
   }))
 
-  // The high-water mark of what this page actually returned, so a client that
-  // pages through a large backlog never skips rows it has not seen.
-  const returned = [...decks, ...cards, ...reviews, ...paramSets].map((r) =>
-    'seq' in r ? (r.seq as number) : 0,
-  )
-  const capped =
-    decks.length === PAGE || cards.length === PAGE || reviews.length === PAGE
-      ? Math.max(since, ...returned)
-      : currentSeq(db)
-
-  return { seq: capped, decks, cards, reviews, paramSets, blobs }
+  // A full page from any table means there is more behind it, so the client
+  // resumes from what it was actually given rather than from the server's
+  // current sequence, which would skip the remainder.
+  return { seq: full ? maxSeq : currentSeq(db), decks, cards, reviews, paramSets, blobs }
 }
 
 export function push(db: DatabaseSync, changes: Partial<ChangeSet>): number {
@@ -192,7 +201,16 @@ function insertReview(db: DatabaseSync, review: Review) {
 
 function insertParamSet(db: DatabaseSync, set: ParamSet) {
   db.prepare(
-    `INSERT INTO paramSets (hash, w, requestRetention, createdAt, seq)
-     VALUES (?, ?, ?, ?, ?) ON CONFLICT(hash) DO NOTHING`,
-  ).run(set.hash, JSON.stringify(set.w), set.requestRetention, set.createdAt, nextSeq(db))
+    `INSERT INTO paramSets (hash, w, requestRetention, learningSteps, createdAt, seq)
+     VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(hash) DO NOTHING`,
+  ).run(
+    set.hash,
+    JSON.stringify(set.w),
+    set.requestRetention,
+    // A client that predates the field sends nothing for it; it ran on the
+    // FSRS defaults, so that is what gets recorded.
+    JSON.stringify(set.learningSteps ?? ['1m', '10m']),
+    set.createdAt,
+    nextSeq(db),
+  )
 }

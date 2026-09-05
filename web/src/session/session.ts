@@ -20,7 +20,7 @@ import {
   buildQueue,
 } from '@eidet/shared'
 import { db } from '../db/db.ts'
-import { commitReveal, newId } from '../db/mutations.ts'
+import { commitReveal, isUnsent, newId, undoCommit } from '../db/mutations.ts'
 
 export async function startSession(
   deckIds: DeckId[] = [],
@@ -49,8 +49,11 @@ export async function startSession(
     missedSideIds: [],
     startedAt: now,
     gradedCount: 0,
+    lastCommit: null,
   }
   await db.sessions.put(session)
+  // Old finished sessions are dead weight; a reload only ever restores by id.
+  await pruneSessions()
   return session
 }
 
@@ -122,7 +125,7 @@ export async function commit(
   const batch = currentBatch(session)
   if (!batch) return session
 
-  await commitReveal(
+  const reviewIds = await commitReveal(
     { cueSideId: batch.cueSideId, grades: plannedGrades(batch, session.missedSideIds, pressed) },
     now,
   )
@@ -133,6 +136,39 @@ export async function commit(
     phase: 'cue',
     missedSideIds: [],
     gradedCount: session.gradedCount + batch.targetSideIds.length,
+    lastCommit: { reviewIds, missedSideIds: session.missedSideIds },
+  })
+}
+
+/**
+ * Is the previous grade press still takeable back? Only while its reviews are
+ * unsent — see `undoCommit`. Asked on render, so the affordance disappears the
+ * moment the work leaves the device rather than failing when pressed.
+ */
+export async function canUndo(session: ReviewSession): Promise<boolean> {
+  if (!session.lastCommit || session.index === 0) return false
+  return isUnsent(session.lastCommit.reviewIds)
+}
+
+/** Step back one card, restoring the reveal exactly as it was graded. */
+export async function undo(
+  session: ReviewSession,
+  now = Date.now(),
+): Promise<ReviewSession> {
+  const last = session.lastCommit
+  if (!last || session.index === 0) return session
+  if (!(await isUnsent(last.reviewIds))) return session
+
+  await undoCommit(last.reviewIds, now)
+
+  const batch = session.queue[session.index - 1]
+  return write({
+    ...session,
+    index: session.index - 1,
+    phase: 'revealed',
+    missedSideIds: last.missedSideIds,
+    gradedCount: Math.max(0, session.gradedCount - (batch?.targetSideIds.length ?? 0)),
+    lastCommit: null,
   })
 }
 

@@ -12,7 +12,7 @@
  */
 import type { ChangeSet, PullResponse } from '@eidet/shared'
 import { db, type SyncState } from '../db/db.ts'
-import { uploadPending } from './blobs.ts'
+import { downloadMissing, uploadPending } from './blobs.ts'
 
 const ENDPOINT = '/api/changes'
 
@@ -43,6 +43,11 @@ async function request(input: string, init?: RequestInit): Promise<Response> {
   return response
 }
 
+/**
+ * The reachability probe (§6). Deliberately its own endpoint and deliberately
+ * out of every runtime cache: asking the service worker whether the app shell
+ * is available would have an offline device answer yes.
+ */
 export async function reachable(): Promise<boolean> {
   try {
     await request('/api/healthz')
@@ -126,10 +131,14 @@ export async function rebuildMemoriesFrom(sideIds: string[]) {
 }
 
 export async function syncOnce(): Promise<{ pushed: number; pulled: number; blobs: number }> {
+  // Probe before doing anything expensive: an unreachable server should cost a
+  // single small request, not a multi-megabyte push that fails slowly.
+  if (!(await reachable())) throw new NetworkError('/api/healthz unreachable')
+
   const pushed = await pushChanges()
   const touchedSides = await pullChanges()
   await rebuildMemoriesFrom(touchedSides)
   // Images go last and in small batches: a review must never queue behind a photo.
-  const blobs = await uploadPending()
+  const blobs = (await uploadPending()) + (await downloadMissing())
   return { pushed, pulled: touchedSides.length, blobs }
 }

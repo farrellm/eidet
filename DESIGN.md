@@ -81,7 +81,7 @@ Three parts of the API carry weight here:
 
 - **`scheduler.next(memory, at, rating)` is pure** and returns `{card, log}`. Both are plain serialisable structs. This is what lets the review log be the source of truth.
 - **`forgetting_curve(decay, elapsedDays, stability)` → R ∈ (0,1]** is a continuous per-side retrievability. This is not just internal bookkeeping — it drives cue selection (§1) *and* it is the app's central visualisation (§4).
-- **`scheduler.rollback(card, log)`** backs out a review, which is exactly what an undo button needs.
+- **`scheduler.rollback(card, log)`** backs out a review. In the end undo does not use it: the review row already carries the exact `memoryBefore` it replaced, so restoring is a `put` (§11).
 
 **Fuzz vs. replay.** `enable_fuzz: true` spreads load across days but makes a fold over the log non-deterministic. Resolve it by **storing the resulting memory snapshot on the review row**: current state is "the snapshot on the newest review for this side", an O(1) read. Full replay from `createEmptyCard()` is a separate, deliberate operation, run only when parameters change.
 
@@ -147,10 +147,16 @@ The bottom third is reserved for actions; the grade bar pins above `env(safe-are
 **One orchestrated moment: the unfold.** It answers a tap and shows what changed, which is the only kind of motion that earns its place here.
 
 - Cue docks from centre to top strip: `transform`, 220ms `cubic-bezier(.2,.7,.2,1)`.
+  One element in two states, moved with a FLIP — not two elements cross-fading.
+  `CueCard` therefore lives outside the phase branch; that is the mechanism, not
+  tidiness.
 - Revealed sides stagger in 40ms apart, 6px rise + fade.
-- Grade commit: graded rows collapse, next cue rises. 180ms.
+- Grading plays the same dock in reverse, because it is the same element: the
+  next cue rises out of the strip. There is no separate collapse animation —
+  one moment, played both ways, is the whole motion budget.
 - Nothing else moves. No hover transitions (it's a touch device), no section entrances.
 - `prefers-reduced-motion: reduce` → cross-fade only, no transform, no stagger.
+  One media block; a second one only loses to the first's `!important`.
 
 ### Principles
 
@@ -237,6 +243,23 @@ clears the mark for large text but sits under the 4.5:1 body-text threshold.
 
 The hero is **the cyanometer strip**: every side in the collection, placed along the retrievability ramp. You see the *shape* of your memory — a bright mass on the right, a fringe sliding left into the brass band. This is the app's characteristic image and no template produces it.
 
+Drawn as a histogram, not a sorted strip of one mark per side — with four ramp
+steps a sorted strip collapses into a proportion bar, which is the generic
+answer (§11). Two things make it read:
+
+- **The axis is banded, not linear.** Each ramp band gets an equal quarter of
+  the width, subdivided evenly inside it. FSRS schedules a side for the moment
+  its recall reaches the retention target, so on a linear axis every side that
+  is not yet due crowds into the top tenth of the scale. Banding also lands the
+  axis ticks exactly where the colour changes.
+- **Height is the square root of the count.** The distribution is heavily
+  skewed — everything reviewed in the last few days sits at R near 1 — and on a
+  linear height the rightmost bin takes the full plot and flattens the left-hand
+  tail, which is the half worth looking at. Exact counts live in the readout.
+
+Brass is not a bar colour: it is a rule beneath the axis marking the stretch
+that is already due, so it stays one contiguous mark and no bar is part-brass.
+
 ```
 ┌─────────────────────────────┐
 │ eidet             synced 2m │
@@ -315,13 +338,22 @@ List of cards; each row shows its sides as small ramp marks so you can see at a 
 
 ### Card editor
 
-**All sides together, always** — per the brief, storage and editing are card-level even though scheduling is side-level. Text or image per side, reorder, add/remove. Each side shows its schedule state read-only (`due in 4 mo · R .94 · 6 reps`) so edits are informed. Editing a side's *content* does not reset its memory — an explicit "reset schedule" action does.
+**All sides together, always** — per the brief, storage and editing are card-level even though scheduling is side-level. Text or image per side, reorder, add/remove. Each side shows its schedule state read-only — its ramp mark, when it is next due, how many reviews it has had — so edits are informed. Set as separate spans, not a `·`-joined string: §3 forbids those, and these two sections used to contradict each other. Editing a side's *content* does not reset its memory — an explicit "reset schedule" action does.
 
 Image sides: capture or pick from the phone, downscale client-side to a max edge of 1600px, store the blob locally, upload when reachable.
 
 ### Settings
 
-Sync status and manual sync, FSRS parameters (`request_retention`, learning steps), storage used, export.
+Sync status and manual sync, FSRS parameters, storage used, export. Reached from
+the sync line in the home screen's top strip: the state and the place to do
+something about it are the same control.
+
+`request_retention` and the learning steps are both part of the stored
+`ParamSet`, so changing either writes a new one — they are immutable and keyed
+by content hash — and replays every side's log under it (§2). Slow and
+deliberate, hence a button rather than a live control. Deck reordering and
+per-side reordering live with the thing they order, in deck settings and the
+card editor.
 
 ---
 
@@ -338,6 +370,7 @@ memory   (sideId PK, cardId, deckId, due, stability, difficulty,
 reviews  (id PK, sideId, cardId, cueSideId, rating, reviewedAt,
           memoryBefore JSON, memoryAfter JSON, params JSON, seq)   -- append-only
 blobs    (sha256 PK, mime, bytes, width, height, createdAt)
+paramSets(hash PK, w JSON, requestRetention, learningSteps JSON, createdAt, seq)
 ```
 
 - **`sides` are a JSON column on `cards`, not their own table.** Cards are always read, written, and edited whole; splitting them would buy nothing and cost a join on every read.
@@ -385,10 +418,14 @@ A `session` record in IndexedDB, written on **every** state transition:
 
 ```ts
 { id, deckIds, queue: CardBatch[], index, phase: 'cue' | 'revealed',
-  cueSideId, missedSideIds, seenAsCueSideIds, startedAt }
+  missedSideIds, startedAt, gradedCount, lastCommit }
 ```
 
-The route is `/review/:sessionId`, so the URL itself survives reload. On boot: load the session, restore queue, index, phase, and missed toggles. Already-graded sides are already rows in `reviews`, so nothing is re-asked. A separate small `uiState` record restores deck scroll position, open editor drafts, and expanded rows.
+`cueSideId` sits on each `CardBatch`, where it belongs — it is per card, not per
+session. There is no `seenAsCueSideIds`: the sight cooldown is structural, not a
+rule to enforce (§11). `lastCommit` is what undo needs (§9).
+
+The route is `/review/:sessionId`, so the URL itself survives reload. On boot: load the session, restore queue, index, phase, and missed toggles. Already-graded sides are already rows in `reviews`, so nothing is re-asked. A separate small `uiState` record (the `ui` table, keyed by string) restores deck scroll position and open editor drafts.
 
 This is the requirement most likely to rot silently — it gets a dedicated Playwright suite (§10).
 
@@ -426,15 +463,21 @@ eidet/
     ├── src/sync/          sync loop, reachability, blob queue
     ├── src/session/       session record, restore-on-boot
     ├── src/screens/       Today, Review, Deck, CardEditor, Settings
-    ├── src/ui/            tokens.css, Ramp, GradeBar, SideRow, CueCard
+    ├── src/ui/            tokens.css, Ramp, Cyanometer, CueCard, SideRow, GradeBar
     └── e2e/               Playwright: offline, reload-restores-state, PWA
 ```
 
 `shared/src/queue.ts` and `shared/src/schedule.ts` hold **all** scheduling logic; screens never do date maths. They are pure functions over plain data, which is what makes the whole review model testable without a browser.
 
-No component library — MUI would fight the visual system for no gain. Hand-rolled CSS with custom properties and CSS Modules.
+No component library — MUI would fight the visual system for no gain.
+Hand-rolled CSS with custom properties, in **one global stylesheet**
+(`ui/tokens.css`). CSS Modules were the original plan and would have prevented
+the handful of ordering collisions the single file allowed; they were not worth
+splitting 700 coherent lines apart for. The rule that replaces them: never stack
+a typographic class (`.label`, `.content`) onto an element whose own class
+overrides it — set both properties in the one place.
 
-**Ports** (5173/5174/5176/8080/8081/8082/8090 are taken by other projects): dev web **5175**, dev server **8083**, deployed **8091** behind `tailscale serve`.
+**Ports** (5173/5174/5176/8080/8081/8082/8090 are taken by other projects): dev web **5175**, dev server **8083**, deployed **8091** behind `tailscale serve`. The Playwright suite runs its own server on **8087**.
 
 ---
 
@@ -454,7 +497,9 @@ Offline is a state, not an error: *"Saved here. Syncs when the server is reachab
 
 **Phase 3 — server and sync.** `node:sqlite` schema, `/api/changes`, sync loop, reachability probe. Then images: client downscale, content-addressed blob store, blob upload queue. Then PWA: `vite-plugin-pwa`, manifest, iOS icons, `tailscale serve`, systemd user unit.
 
-**Phase 4 — refinement.** The cyanometer strip on Today; undo via `scheduler.rollback`; deck settings; FSRS parameter optimisation from the review log (`@open-spaced-repetition/binding` `computeParameters` → 21-element `w`, run server-side on demand, then replay).
+**Phase 4 — refinement.** The cyanometer strip on Today; undo (see §11 — via the
+review's own `memoryBefore`, not `scheduler.rollback`); deck settings; FSRS
+parameter optimisation from the review log (`@open-spaced-repetition/binding` `computeParameters` → 21-element `w`, run server-side on demand, then replay).
 
 > Load the **`dataviz`** skill before writing the cyanometer strip in phase 4 — it is a real distribution chart and should be built as one.
 
@@ -515,14 +560,50 @@ Recorded here because they changed the design, not just the code.
   right check for a sequential ramp (the categorical adjacent-pair rule does not
   apply to one).
 - **The hero is a histogram, not a stacked bar.** A five-segment proportion bar
-  was both generic and mostly brass. The distribution over the schedule horizon
-  shows real shape and confines brass to a single mark.
+  was both generic and mostly brass. A distribution shows real shape and
+  confines brass to a single mark. Note that this changed the *form* only — the
+  variable is still retrievability, as §4 always said. An intermediate version
+  binned by due date instead, which quietly gave a ramp colour two meanings: R
+  everywhere in the app, and "due in a month" on the one screen where the ramp
+  is the whole point. Position and colour now encode the same number again.
 - **Dexie cannot index booleans**, so `LocalBlob.uploaded` is `0 | 1`. It is the
   field the upload queue scans, so it has to be indexed.
+- **Undo restores the stored snapshot; `scheduler.rollback` is never called.**
+  Every review already carries the exact `memoryBefore` it replaced — the same
+  reason §2 gives for storing `memoryAfter` — so backing one out is a `put`, not
+  a recomputation.
+- **Undo is offered only while the commit is unsent.** Reviews are append-only
+  and immutable, and that is the single property making sync conflict-free (§6).
+  A review that has reached the server is part of a shared log and stays; one
+  still in the outbox has no standing anywhere and can simply go. The outbox is
+  keyed `table:rowId`, so "unsent" is an exact check, and the affordance is
+  absent rather than failing under the thumb.
+- **A live query must not write to a table it reads.** `currentParams` creates
+  the parameter set when there isn't one, and reading it through `useLiveQuery`
+  re-triggered the query forever. On a device that already had a set the loop
+  never started, so it only appeared on a first run — where it hung the home
+  screen. Creation happens in an effect now (`db/useParams.ts`); the query is a
+  pure read.
+- **The pull cursor is read off the raw rows, not the mapped objects.** `Review`
+  and `ParamSet` deliberately carry no `seq`, so deriving the high-water mark
+  from them scored every review as 0 and pinned the cursor at `since`: a client
+  with more than one page of reviews re-pulled the same page forever.
+- **The brass rule is under the hero's axis, not in its bars.** Due-ness and
+  retrievability nearly but not exactly coincide, so painting bars brass left a
+  boundary bin that was honestly neither. An axis annotation is one contiguous
+  mark at a fixed, principled position — the retention target.
+- **Ramp marks are taken over every side of a deck, not only the ones not due.**
+  A side is scheduled for the moment its recall reaches the target, so the
+  not-due sides are all fresh by construction and a mark computed from them read
+  identically for every deck. A mark that never varies carries no information.
 
 ## Open items
 
-- FSRS parameter optimisation (phase 4) needs `@open-spaced-repetition/binding`, a native/WASM module — confirm it builds on this host before committing to server-side training.
+- FSRS parameter optimisation (phase 4) needs `@open-spaced-repetition/binding`, a native/WASM module — confirm it builds on this host before committing to server-side training. Everything downstream of it is already in place: `ParamSet`, `paramsHash`, `replayAll`, and a settings screen that writes a new set and replays.
 - Deck import (Anki `.apkg`, CSV) is out of scope but the free-form deck mode is the natural landing zone if it's wanted later.
-- Deck reordering, search within a deck, and a settings screen for FSRS
-  parameters are specified in §4 but not yet built.
+- The ramp's bands (`.70 / .85 / .95`) are calibrated for reading a *side*, not a
+  collection. Because a side falls due exactly when its recall reaches the
+  retention target, in practice only the top two bands ever describe a side that
+  is not due; the lower two are the overdue tail. That is why the home screen's
+  histogram bands the axis rather than scaling it linearly. Worth revisiting if
+  the per-deck ramp marks still read alike on a real collection.

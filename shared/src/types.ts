@@ -152,6 +152,8 @@ export interface ParamSet {
   hash: string
   w: number[]
   requestRetention: number
+  /** Sub-day steps for a side's first encounter, e.g. `['1m', '10m']`. */
+  learningSteps: string[]
   createdAt: number
 }
 
@@ -199,6 +201,19 @@ export interface ReviewSession {
   missedSideIds: SideId[]
   startedAt: number
   gradedCount: number
+  /**
+   * What the previous grade press wrote, so it can be taken back. Undo is
+   * offered only while these reviews are still unsent: reviews are append-only
+   * and immutable once they reach the server, which is the single property
+   * that makes sync conflict-free (§5, §6).
+   */
+  lastCommit: LastCommit | null
+}
+
+export interface LastCommit {
+  reviewIds: ReviewId[]
+  /** Restored along with the reveal, so the screen comes back as it was. */
+  missedSideIds: SideId[]
 }
 
 // ---------------------------------------------------------------- sync

@@ -1,4 +1,12 @@
+import { rmSync } from 'node:fs'
 import { defineConfig } from '@playwright/test'
+
+/*
+ * A run starts from an empty server. The suite asserts exact row counts, so a
+ * database left behind by the previous run makes every one of them wrong — and
+ * the failure looks like a sync bug rather than a dirty fixture.
+ */
+rmSync(new URL('./.e2e-data', import.meta.url), { recursive: true, force: true })
 
 /**
  * The offline/PWA suite runs against a *production* build served by the real

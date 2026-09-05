@@ -15,7 +15,6 @@ import type {
   ParamSet,
   Review,
   ReviewSession,
-  Sha256,
 } from '@eidet/shared'
 
 /** Local-only bookkeeping for the sync engine (§6). */
@@ -100,9 +99,4 @@ export function onDirty(listener: () => void): () => void {
 export async function enqueue(table: Outbox['table'], rowId: string, now = Date.now()) {
   await db.outbox.put({ id: `${table}:${rowId}`, table, rowId, queuedAt: now })
   for (const listener of dirtyListeners) listener()
-}
-
-export async function blobUrl(sha256: Sha256): Promise<string | null> {
-  const row = await db.blobs.get(sha256)
-  return row ? URL.createObjectURL(row.data) : null
 }

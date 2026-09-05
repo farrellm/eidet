@@ -3,7 +3,6 @@ import {
   defaultParamSet,
   grade,
   newMemory,
-  overdueDays,
   paramSet,
   paramsHash,
   replay,
@@ -159,24 +158,24 @@ describe('replay', () => {
 })
 
 describe('parameter identity', () => {
+  const STEPS = ['1m', '10m']
+
   it('hashes the same weights to the same value', () => {
     const w = Array.from({ length: 21 }, (_, i) => i / 7)
-    expect(paramsHash(w, 0.9)).toBe(paramsHash([...w], 0.9))
-    expect(paramsHash(w, 0.9)).not.toBe(paramsHash(w, 0.85))
-    expect(paramSet(w, 0.9, T0).hash).toHaveLength(8)
+    expect(paramsHash(w, 0.9, STEPS)).toBe(paramsHash([...w], 0.9, [...STEPS]))
+    expect(paramsHash(w, 0.9, STEPS)).not.toBe(paramsHash(w, 0.85, STEPS))
+    expect(paramSet(w, 0.9, STEPS, T0).hash).toHaveLength(8)
+  })
+
+  it('distinguishes parameter sets that differ only in their learning steps', () => {
+    const w = Array.from({ length: 21 }, (_, i) => i / 7)
+    expect(paramsHash(w, 0.9, ['1m', '10m'])).not.toBe(paramsHash(w, 0.9, ['5m', '25m']))
   })
 
   it('defaults to the FSRS-6 weight vector', () => {
     expect(PARAMS.w).toHaveLength(21)
     expect(PARAMS.requestRetention).toBe(0.9)
-  })
-})
-
-describe('overdueDays', () => {
-  it('is positive once past due and negative before', () => {
-    const m: Memory = { ...newMemory(IDS, T0), due: T0 }
-    expect(overdueDays(m, T0 + 3 * DAY)).toBeCloseTo(3)
-    expect(overdueDays(m, T0 - DAY)).toBeCloseTo(-1)
+    expect(PARAMS.learningSteps).toEqual(['1m', '10m'])
   })
 })
 
