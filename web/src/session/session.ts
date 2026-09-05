@@ -150,16 +150,21 @@ export async function canUndo(session: ReviewSession): Promise<boolean> {
   return isUnsent(session.lastCommit.reviewIds)
 }
 
-/** Step back one card, restoring the reveal exactly as it was graded. */
+/**
+ * Step back one card, restoring the reveal exactly as it was graded.
+ *
+ * The session rewinds only if the reviews actually went. `undoCommit` is the
+ * one that decides — asking `isUnsent` here and rewinding regardless would
+ * unwind the screen past a grade the log still holds, and the next press would
+ * write a second review for the same side.
+ */
 export async function undo(
   session: ReviewSession,
   now = Date.now(),
 ): Promise<ReviewSession> {
   const last = session.lastCommit
   if (!last || session.index === 0) return session
-  if (!(await isUnsent(last.reviewIds))) return session
-
-  await undoCommit(last.reviewIds, now)
+  if (!(await undoCommit(last.reviewIds, now))) return session
 
   const batch = session.queue[session.index - 1]
   return write({

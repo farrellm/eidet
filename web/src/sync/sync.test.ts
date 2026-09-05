@@ -1,16 +1,16 @@
 /**
- * The one sync rule that loses work if it breaks. See DESIGN.md §6.
+ * The one sync rule that loses work if it breaks, from both sides. See §6.
  *
- * A pull must not clobber a row that still has unsent local edits. Everything
- * else about sync is recoverable — a missed push retries, a stale cursor
- * re-pulls — but overwriting an edit made offline destroys it silently, and the
- * user finds out days later.
+ * A pull must not clobber a row that still has unsent local edits, and a push
+ * must not clear an edit it did not send. Everything else about sync is
+ * recoverable — a missed push retries, a stale cursor re-pulls — but losing an
+ * edit made offline is silent, and the user finds out days later.
  */
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import type { Card, Deck, PullResponse } from '@eidet/shared'
 import { db, enqueue } from '../db/db.ts'
-import { pullChanges } from './sync.ts'
+import { pullChanges, pushChanges } from './sync.ts'
 
 const T0 = Date.UTC(2026, 0, 1)
 
@@ -98,5 +98,51 @@ describe('a pull does not clobber unsent local edits', () => {
     serverSays({ seq: 42 })
     await pullChanges()
     expect((await db.sync.get('sync'))!.cursor).toBe(42)
+  })
+})
+
+/**
+ * The same rule from the other side: a push clears the outbox, and it must
+ * clear only what it actually sent. The outbox is keyed by row, not by edit, so
+ * a row edited again during the request is sitting under the very key the push
+ * is about to delete.
+ */
+describe('a push does not clear an edit made during the request', () => {
+  it('keeps a row re-queued while the request was open', async () => {
+    await db.decks.put(deck())
+    await enqueue('decks', 'd1', T0)
+
+    let release = () => {}
+    const answered = new Promise<void>((r) => (release = r))
+    let arrived = () => {}
+    const inFlight = new Promise<void>((r) => (arrived = r))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        arrived()
+        await answered
+        return new Response('{}', { status: 200 })
+      }),
+    )
+
+    const pushed = pushChanges()
+    await inFlight
+    await db.decks.put(deck({ name: 'renamed while the push was open' }))
+    await enqueue('decks', 'd1', T0 + 1000)
+    release()
+    await pushed
+
+    // Still dirty, so the rename goes up on the next push instead of sitting
+    // on the device with nothing left to say it is unsent.
+    expect(await db.outbox.get('decks:d1')).toBeDefined()
+  })
+
+  it('clears a row that was left alone', async () => {
+    await db.decks.put(deck())
+    await enqueue('decks', 'd1', T0)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
+
+    expect(await pushChanges()).toBe(1)
+    expect(await db.outbox.get('decks:d1')).toBeUndefined()
   })
 })

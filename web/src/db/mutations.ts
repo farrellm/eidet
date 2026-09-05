@@ -27,7 +27,7 @@ import {
   sideFilled,
   sideTested,
 } from '@eidet/shared'
-import { db, enqueue } from './db.ts'
+import { db, enqueue, withSendLock } from './db.ts'
 
 export const newId = () => crypto.randomUUID()
 
@@ -236,6 +236,10 @@ export async function commitReveal(reveal: RevealGrades, now = Date.now()): Prom
  * offered while that holds. Reviews are append-only and immutable (§5) — the
  * property that makes sync conflict-free — so one that has reached the server
  * is never withdrawn. Unsent, it has no such standing and can simply go.
+ *
+ * Advisory: this is what decides whether the affordance is drawn. The answer
+ * that counts is taken again inside `undoCommit`, where a push cannot move
+ * underneath it.
  */
 export async function isUnsent(reviewIds: ReviewId[]): Promise<boolean> {
   if (reviewIds.length === 0) return false
@@ -244,23 +248,38 @@ export async function isUnsent(reviewIds: ReviewId[]): Promise<boolean> {
 }
 
 /**
- * Take back one commit. `scheduler.rollback` is not needed: every review row
- * already carries the exact memory it replaced, which is the same reason §2
- * gives for storing the snapshot in the first place. A null `memoryBefore`
- * means the side had never been reviewed, so it goes back to being new.
+ * Take back one commit, and report whether it was still takeable. False means a
+ * push got there first and the reviews stand — the caller must not rewind
+ * anything, or the session goes back a card while the log keeps the grade and
+ * the next press writes a second review for the same side.
+ *
+ * `scheduler.rollback` is not needed: every review row already carries the exact
+ * memory it replaced, which is the same reason §2 gives for storing the snapshot
+ * in the first place. A null `memoryBefore` means the side had never been
+ * reviewed, so it goes back to being new.
+ *
+ * Under the send lock, and re-reading the outbox inside the transaction: the
+ * test and the deletion have to be one indivisible step against a push that
+ * clears the outbox, or this becomes the withdrawal of a review the server has
+ * already taken — which the next pull simply restores. See `withSendLock`.
  */
-export async function undoCommit(reviewIds: ReviewId[], now = Date.now()) {
-  if (!(await isUnsent(reviewIds))) return
-  await db.transaction('rw', db.memories, db.reviews, db.outbox, async () => {
-    for (const id of reviewIds) {
-      const review = await db.reviews.get(id)
-      if (!review) continue
-      const ids = { sideId: review.sideId, cardId: review.cardId, deckId: review.deckId }
-      await db.memories.put(review.memoryBefore ?? newMemory(ids, now))
-      await db.reviews.delete(id)
-      await db.outbox.delete(`reviews:${id}`)
-    }
-  })
+export async function undoCommit(reviewIds: ReviewId[], now = Date.now()): Promise<boolean> {
+  if (reviewIds.length === 0) return false
+  return withSendLock(() =>
+    db.transaction('rw', db.memories, db.reviews, db.outbox, async () => {
+      const queued = await db.outbox.bulkGet(reviewIds.map((id) => `reviews:${id}`))
+      if (!queued.every(Boolean)) return false
+      for (const id of reviewIds) {
+        const review = await db.reviews.get(id)
+        if (!review) continue
+        const ids = { sideId: review.sideId, cardId: review.cardId, deckId: review.deckId }
+        await db.memories.put(review.memoryBefore ?? newMemory(ids, now))
+        await db.reviews.delete(id)
+        await db.outbox.delete(`reviews:${id}`)
+      }
+      return true
+    }),
+  )
 }
 
 /** Forget a side entirely and start it over. The review log is left intact. */

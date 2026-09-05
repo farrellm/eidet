@@ -578,6 +578,21 @@ Recorded here because they changed the design, not just the code.
   still in the outbox has no standing anywhere and can simply go. The outbox is
   keyed `table:rowId`, so "unsent" is an exact check, and the affordance is
   absent rather than failing under the thumb.
+- **A push and an undo take the same lock.** "Still in the outbox" is only
+  honest if nothing can move the row while it is read: a push holds its rows
+  there for the whole request, so between the POST and the clear the entry
+  stands for a review the server has already taken. Undo then deleted a row the
+  next pull brought straight back, memory and all — an undo that quietly
+  reversed itself. Both sides now run under `withSendLock`, so the two happen in
+  one order or the other: undo before the batch is collected, and the review
+  never leaves; or after the outbox is cleared, where it declines. What is left
+  is delivery the device cannot observe — the server commits and the response is
+  lost — which errs towards keeping a review, the direction this section asks
+  for.
+- **A push clears only the edits it sent.** The outbox is a set of dirty rows,
+  not a log of edits, so a row touched again during the request sits under the
+  key the push is about to delete. Clearing by id alone dropped that edit; the
+  comparison is on `queuedAt`.
 - **A live query must not write to a table it reads.** `currentParams` creates
   the parameter set when there isn't one, and reading it through `useLiveQuery`
   re-triggered the query forever. On a device that already had a set the loop
@@ -588,6 +603,13 @@ Recorded here because they changed the design, not just the code.
   and `ParamSet` deliberately carry no `seq`, so deriving the high-water mark
   from them scored every review as 0 and pinned the cursor at `since`: a client
   with more than one page of reviews re-pulled the same page forever.
+- **And it is the lowest last-`seq` among the tables that filled their page**,
+  not the highest seen anywhere. Tables page independently, so a backlog of
+  reviews plus a later deck edit puts the deck above the reviews' boundary, and
+  the maximum hands back a cursor past reviews this page could not fit —
+  stranding them for good. A table that did not fill its page may see a row
+  twice; every write is idempotent, so that costs nothing, while a skipped row
+  is never asked for again.
 - **The brass rule is under the hero's axis, not in its bars.** Due-ness and
   retrievability nearly but not exactly coincide, so painting bars brass left a
   boundary bin that was honestly neither. An axis annotation is one contiguous

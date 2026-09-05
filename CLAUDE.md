@@ -54,13 +54,23 @@ apart. If a change makes sense for "a card's schedule", it is probably wrong.
 - **Undo only reaches unsent reviews.** It deletes the commit's rows and puts
   back each review's stored `memoryBefore`; `scheduler.rollback` is not used.
   Once a review is pushed the affordance is gone — withdrawing it would break
-  the append-only property everything above rests on.
-- **A pull must not clobber unsent local edits.** `pullChanges` skips any row
-  still in the outbox. Dropping that check silently eats work done offline;
-  `sync/sync.test.ts` pins it.
-- **The pull cursor comes from the raw SQL rows.** `Review` and `ParamSet` carry
-  no `seq` field, so computing the high-water mark from the mapped objects
-  stalls a client's cursor forever once it has a page of reviews to catch up on.
+  the append-only property everything above rests on. `pushChanges` and
+  `undoCommit` take `withSendLock` for exactly this reason: a push holds its
+  rows in the outbox across the request, so without it undo could delete a
+  review the server had already accepted, and the next pull would restore it.
+  `undoCommit` returns whether it ran; the session rewinds only if it did.
+- **A pull must not clobber unsent local edits,** and a push must not clear an
+  edit it did not send. `pullChanges` skips any row still in the outbox;
+  `clearSent` compares `queuedAt`, because the outbox is keyed by row and a row
+  edited mid-request sits under the key the push is about to delete. Dropping
+  either check silently eats work done offline; `sync/sync.test.ts` pins both.
+- **The pull cursor comes from the raw SQL rows,** and is the *lowest* last-`seq`
+  among the tables that filled their page. `Review` and `ParamSet` carry no
+  `seq` field, so computing the high-water mark from the mapped objects stalls a
+  client's cursor forever once it has a page of reviews to catch up on; taking
+  the maximum instead strands the rows a capped table could not fit. Re-sending
+  a row is free, skipping one is permanent. `server/test/changes.test.ts` pins
+  the two-table shape — one table alone passes either way.
 - **Sync lives at the app root** (`SyncProvider`), never inside a screen — it
   once stopped during reviews, which is when there is most to push. A local
   write nudges it via `onDirty` (700 ms debounce).

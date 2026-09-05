@@ -11,7 +11,7 @@
  * erasing work done offline.
  */
 import type { ChangeSet, PullResponse } from '@eidet/shared'
-import { db, type SyncState } from '../db/db.ts'
+import { db, withSendLock, type Outbox, type SyncState } from '../db/db.ts'
 import { downloadMissing, uploadPending } from './blobs.ts'
 
 const ENDPOINT = '/api/changes'
@@ -75,19 +75,39 @@ async function collectOutbox(): Promise<ChangeSet> {
   }
 }
 
-export async function pushChanges(): Promise<number> {
-  const outbox = await db.outbox.toArray()
-  if (outbox.length === 0) return 0
-  const changes = await collectOutbox()
-  await request(ENDPOINT, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(changes),
+/**
+ * Clear exactly what went up. The outbox is keyed by row rather than by edit, so
+ * a row touched again during the request carries a newer `queuedAt` under the
+ * same key — deleting by id alone would drop that edit on the floor, which is
+ * the opposite of what an outbox is for. Compare, and keep what has moved on.
+ */
+async function clearSent(sent: Outbox[]) {
+  await db.transaction('rw', db.outbox, async () => {
+    const current = await db.outbox.bulkGet(sent.map((e) => e.id))
+    const done = sent.filter((e, i) => current[i]?.queuedAt === e.queuedAt)
+    await db.outbox.bulkDelete(done.map((e) => e.id))
   })
-  // Clear only what was actually sent, so an edit made mid-request is not lost.
-  await db.outbox.bulkDelete(outbox.map((e) => e.id))
-  await db.sync.put({ ...(await state()), lastPushedAt: Date.now() })
-  return outbox.length
+}
+
+/**
+ * Held under the send lock for the whole request, not just the two writes: the
+ * outbox is what tells undo a review has not left the device, and that has to
+ * stay true from the moment the batch is collected to the moment it is cleared.
+ */
+export async function pushChanges(): Promise<number> {
+  return withSendLock(async () => {
+    const outbox = await db.outbox.toArray()
+    if (outbox.length === 0) return 0
+    const changes = await collectOutbox()
+    await request(ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(changes),
+    })
+    await clearSent(outbox)
+    await db.sync.put({ ...(await state()), lastPushedAt: Date.now() })
+    return outbox.length
+  })
 }
 
 export async function pullChanges(): Promise<string[]> {

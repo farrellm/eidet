@@ -6,11 +6,12 @@
  * unsent: unpushed, a review has no standing anywhere else and can simply go;
  * pushed, it is part of the shared log and stays.
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import 'fake-indexeddb/auto'
 import type { Card, Deck, ReviewSession } from '@eidet/shared'
 import { newMemory } from '@eidet/shared'
 import { db } from '../db/db.ts'
+import { pushChanges } from '../sync/sync.ts'
 import { canUndo, commit, undo } from './session.ts'
 
 const T0 = Date.UTC(2026, 0, 1)
@@ -54,6 +55,10 @@ const session = (): ReviewSession => ({
   startedAt: T0,
   gradedCount: 0,
   lastCommit: null,
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 beforeEach(async () => {
@@ -132,3 +137,76 @@ describe('undo', () => {
     expect(await canUndo(session())).toBe(false)
   })
 })
+
+/**
+ * The window that made "unsent" a lie. A push keeps its rows in the outbox for
+ * the length of the request, so a naive check sees an entry for a review the
+ * server has already taken — and undoing it deletes a row the next pull brings
+ * straight back, memory and all. Both sides take the send lock, so the two can
+ * only happen in one order or the other.
+ */
+describe('undo against a push in flight', () => {
+  /** A push whose request hangs until the test lets it answer. */
+  function hangingPush() {
+    let release = () => {}
+    const sent = new Promise<void>((r) => (release = r))
+    let arrived = () => {}
+    const inFlight = new Promise<void>((r) => (arrived = r))
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        arrived()
+        await sent
+        return new Response('{}', { status: 200 })
+      }),
+    )
+    return { inFlight, release: () => release(), push: () => pushChanges() }
+  }
+
+  it('declines, and leaves the review the server accepted alone', async () => {
+    const graded = await commit(session(), 3, T0 + 1000)
+    const memory = (await db.memories.get('s2'))!
+
+    const { inFlight, release, push } = hangingPush()
+    const pushed = push()
+    await inFlight
+
+    // Pressed with the request still open: the entry is in the outbox, but the
+    // review is already on its way.
+    const attempt = undo(graded, T0)
+    release()
+    await pushed
+    const same = await attempt
+
+    expect(await db.reviews.count()).toBe(1)
+    expect(await db.memories.get('s2')).toEqual(memory)
+    // The screen stays on the card after the graded one, or the next grade
+    // would write a second review for the same side.
+    expect(same.index).toBe(1)
+    expect(same.gradedCount).toBe(graded.gradedCount)
+    expect(await canUndo(same)).toBe(false)
+  })
+
+  it('takes the review back before the push can collect it', async () => {
+    const graded = await commit(session(), 3, T0 + 1000)
+    const fetched = vi.fn(async (_input: string, _init?: RequestInit) =>
+      new Response('{}', { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetched)
+
+    // The other order: undo claims the lock, and the push queues behind it.
+    const attempt = undo(graded, T0)
+    const pushed = pushChanges()
+    const back = await attempt
+    await pushed
+
+    expect(back.index).toBe(0)
+    expect(await db.reviews.count()).toBe(0)
+    // The push went ahead — there is a parameter set to send — but it carries
+    // no review, because the one it would have sent no longer exists.
+    const body = JSON.parse(String(fetched.mock.calls[0]![1]!.body)) as { reviews: unknown[] }
+    expect(body.reviews).toEqual([])
+  })
+})
+
