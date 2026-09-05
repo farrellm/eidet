@@ -51,9 +51,14 @@ export function Settings() {
   const apply = async (retention: number, steps: string[]) => {
     setBusy(true)
     const next = paramSet([...params.w], retention, steps, Date.now())
-    await setParams(next)
-    await replayAll(next)
-    setBusy(false)
+    try {
+      await setParams(next)
+      await replayAll(next)
+    } finally {
+      // A replay over a large log can fail part-way. Without this the screen
+      // stays disabled until a reload, which reads as the app having hung.
+      setBusy(false)
+    }
   }
 
   return (
@@ -186,8 +191,13 @@ function ExportButton() {
     const a = document.createElement('a')
     a.href = url
     a.download = `eidet-${new Date().toISOString().slice(0, 10)}.json`
+    // In the document, and revoked on a later turn: this app runs in Safari on
+    // a phone, where a detached anchor is ignored and revoking the URL in the
+    // same tick cancels the download that the click just started.
+    document.body.append(a)
     a.click()
-    URL.revokeObjectURL(url)
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
     setDone(true)
   }
 

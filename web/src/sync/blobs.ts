@@ -51,11 +51,17 @@ export async function downloadMissing(limit = 3): Promise<number> {
 
   const held = new Set(await db.blobs.where('sha256').anyOf([...wanted]).primaryKeys())
   let done = 0
+  let tried = 0
   for (const sha256 of wanted) {
-    if (done >= limit) break
+    // Attempts are what the budget counts, not successes: a card can name a
+    // digest the other device has not uploaded yet, and the 404 that comes back
+    // must not stall every download behind it — on this pass or on any later
+    // one, since the scan order is stable. A dead network throws instead, which
+    // ends the whole sync as it should.
+    if (tried >= limit) break
     if (held.has(sha256)) continue
-    if (!(await fetchMissing(sha256))) break
-    done++
+    tried++
+    if (await fetchMissing(sha256)) done++
   }
   return done
 }

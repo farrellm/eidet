@@ -24,19 +24,26 @@ const PAGE = 2000
 
 export function pull(db: DatabaseSync, since: number): PullResponse {
   /*
-   * Every table pages independently, so the cursor handed back has to be the
-   * high-water mark of what this page actually returned. Read it off the raw
-   * rows: `seq` is a storage column and most of the shared types deliberately
-   * do not carry it, so deriving the mark from the mapped objects silently
-   * scored reviews and paramSets as 0 and pinned the cursor at `since` — a
-   * client with a review backlog re-pulled the same page forever.
+   * Every table pages independently, so the cursor handed back has to be a
+   * sequence past which *no* table still owes rows. Read it off the raw rows:
+   * `seq` is a storage column and most of the shared types deliberately do not
+   * carry it, so deriving the mark from the mapped objects silently scored
+   * reviews and paramSets as 0 and pinned the cursor at `since` — a client with
+   * a review backlog re-pulled the same page forever.
+   *
+   * The mark is the *lowest* last-seq among the tables that filled their page,
+   * not the highest seq seen anywhere. Pushing a backlog of reviews and then
+   * editing a deck puts the deck's row above the reviews' page boundary, and
+   * taking the maximum would hand back a cursor past the reviews this page
+   * could not fit — stranding them for good. A table that did not fill its page
+   * may be re-sent a row or two; every write here is idempotent, so that costs
+   * nothing, while a skipped row is never seen again.
    */
-  let maxSeq = since
-  let full = false
+  let cap = Number.POSITIVE_INFINITY
   const rows = <T>(sql: string): T[] => {
     const page = db.prepare(sql).all(since, PAGE) as (T & { seq: number })[]
-    for (const r of page) if (r.seq > maxSeq) maxSeq = r.seq
-    if (page.length === PAGE) full = true
+    // Ordered by seq, so the last row is this table's high-water mark.
+    if (page.length === PAGE) cap = Math.min(cap, page[page.length - 1]!.seq)
     return page
   }
 
@@ -112,7 +119,8 @@ export function pull(db: DatabaseSync, since: number): PullResponse {
   // A full page from any table means there is more behind it, so the client
   // resumes from what it was actually given rather than from the server's
   // current sequence, which would skip the remainder.
-  return { seq: full ? maxSeq : currentSeq(db), decks, cards, reviews, paramSets, blobs }
+  const seq = Number.isFinite(cap) ? cap : currentSeq(db)
+  return { seq, decks, cards, reviews, paramSets, blobs }
 }
 
 export function push(db: DatabaseSync, changes: Partial<ChangeSet>): number {

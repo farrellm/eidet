@@ -127,16 +127,22 @@ export function DeckScreen() {
  *
  * Restored once, after the rows exist; saved on scroll, throttled through a
  * frame so a flick does not write on every event.
+ *
+ * A callback ref rather than a `useRef`, because the list is not in the tree on
+ * the first commit: the screen renders a placeholder until Dexie answers. An
+ * effect keyed on `key` alone ran once against a null ref and never again, so
+ * neither the restore nor the listener ever happened. The element itself has to
+ * be the dependency.
  */
 function useScrollMemory(key: string) {
-  const ref = useRef<HTMLDivElement>(null)
+  const [el, setEl] = useState<HTMLDivElement | null>(null)
   const restored = useRef(false)
 
   useEffect(() => {
-    const el = ref.current
     if (!el) return
 
     let frame = 0
+    let live = true
     const onScroll = () => {
       if (frame) return
       frame = requestAnimationFrame(() => {
@@ -146,18 +152,22 @@ function useScrollMemory(key: string) {
     }
 
     void db.ui.get(key).then((row) => {
+      // The read is async, so the list may already be gone by the time it
+      // lands — attaching then would leak a listener the cleanup has run past.
+      if (!live) return
       if (!restored.current && typeof row?.value === 'number') el.scrollTop = row.value
       restored.current = true
       el.addEventListener('scroll', onScroll, { passive: true })
     })
 
     return () => {
+      live = false
       cancelAnimationFrame(frame)
       el.removeEventListener('scroll', onScroll)
     }
-  }, [key])
+  }, [key, el])
 
-  return ref
+  return setEl
 }
 
 function CardRow({

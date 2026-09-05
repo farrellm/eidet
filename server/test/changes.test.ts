@@ -198,4 +198,24 @@ describe('paging', () => {
     expect(second.paramSets).toHaveLength(5)
     expect(pull(db, second.seq).paramSets).toHaveLength(0)
   })
+
+  it('does not strand a capped table under a later row from another one', () => {
+    // The realistic shape: a backlog of reviews goes up, then a deck is edited.
+    // The deck's row sits above the reviews' page boundary, so a cursor taken
+    // as the highest seq on the page skips the reviews that did not fit.
+    push(db, {
+      reviews: Array.from({ length: PAGE + 5 }, (_, i) =>
+        review({ id: `r${i}`, reviewedAt: 5000 + i }),
+      ),
+    })
+    push(db, { decks: [deck()] })
+
+    const first = pull(db, 0)
+    expect(first.reviews).toHaveLength(PAGE)
+    expect(first.decks).toHaveLength(1)
+
+    const second = pull(db, first.seq)
+    const ids = new Set([...first.reviews, ...second.reviews].map((r) => r.id))
+    expect(ids.size).toBe(PAGE + 5)
+  })
 })

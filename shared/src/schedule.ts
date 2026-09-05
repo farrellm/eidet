@@ -153,10 +153,22 @@ export function newMemory(
 }
 
 /**
+ * The instance behind the default argument below. Built once: `retrievability`
+ * is called per side on every render of the home screen and the hero chart, and
+ * evaluating `scheduler()` as a default argument constructed a fresh FSRS for
+ * each of them. It takes no options, so there is only ever one of it to have.
+ */
+let readOnlyScheduler: FSRS | undefined
+
+/**
  * Current probability of recall, 0–1. Drives cue selection (§1) and is the value
  * the whole interface visualises (§3) — the ramp is this number.
  */
-export function retrievability(m: Memory, now: number, fsrsInstance = scheduler()): number {
+export function retrievability(
+  m: Memory,
+  now: number,
+  fsrsInstance = (readOnlyScheduler ??= scheduler()),
+): number {
   if (m.lastReview === null) return 0
   return fsrsInstance.get_retrievability(toFsrsCard(m), new Date(now), false)
 }

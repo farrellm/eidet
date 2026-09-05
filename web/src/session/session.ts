@@ -172,9 +172,21 @@ export async function undo(
   })
 }
 
-/** Drop finished sessions so the table does not grow without bound. */
-export async function pruneSessions(keep = 3) {
+/** How long an unfinished session stays restorable before it counts as walked away from. */
+const ABANDONED_AFTER = 7 * 86_400_000
+
+/**
+ * Drop old sessions so the table does not grow without bound.
+ *
+ * Finished ones past the newest few, and unfinished ones old enough that no
+ * reload is coming back to them. Pruning only the finished ones left the common
+ * case unbounded: walking away mid-deck is not rare, and every abandoned
+ * session stayed for good.
+ */
+export async function pruneSessions(keep = 3, now = Date.now()) {
   const all = await db.sessions.orderBy('startedAt').reverse().toArray()
-  const stale = all.filter((s) => isFinished(s)).slice(keep)
+  const stale = all
+    .slice(keep)
+    .filter((s) => isFinished(s) || s.startedAt < now - ABANDONED_AFTER)
   await db.sessions.bulkDelete(stale.map((s) => s.id))
 }
