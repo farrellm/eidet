@@ -1,0 +1,14 @@
+{
+  "name": "eidet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A spaced memory repetition SPA. See DESIGN.md.",
+  "packageManager": "pnpm@11.18.0",
+  "engines": { "node": ">=22" },
+  "type": "module",
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build"
+  }
+}
