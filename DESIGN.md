@@ -164,6 +164,71 @@ The bottom third is reserved for actions; the grade bar pins above `env(safe-are
 
 Run this brief cold and you land on: a dark-grey app, Inter, a blue accent, a flipping card, a streak counter, and a big "23 due" number over a small label. Every one of those is refused here. The palette comes from a named historical instrument that measures a continuous value off a colour ramp; the ramp does real encoding work; the card unfolds because it has N sides; and the home screen's hero is a distribution of the actual algorithm state, not a count.
 
+### Alternative palettes considered
+
+Two other directions were worked up before Cyanometer was chosen. Both are
+recorded in full, with measurements, because a palette is a decision and the
+next person to reopen it should not have to redo the arithmetic.
+
+**Herbarium** — pale bone paper, iron-gall ink, one dried-madder red. Cards as
+pressed specimens on a mounting sheet; memory strength shown as pigment fading.
+
+```
+ground   #EDE8DC   bone paper      raised  #F6F3EA
+ink      #23282A   iron gall       quiet   #7C7566   3.74:1
+madder   #9E3B32   due now         5.50:1
+ramp     #CFC6B4  #A79878  #6E6448  #23282A
+         1.39:1   2.32:1   4.80:1   12.20:1     ← first two fail the 3:1 floor
+```
+
+**Signal & noise** — near-neutral graphite with a single high-chroma signal,
+type set very tight and large.
+
+```
+ground   #16181A   graphite        raised  #202325
+ink      #F2F2F0                   quiet   #85898C   5.05:1
+signal   #B7F04A   due now         13.20:1
+ramp     #3A3E40  #5E6467  #949A9D  #F2F2F0
+         1.65:1   2.96:1   6.25:1   15.88:1     ← first two fail the 3:1 floor
+```
+
+**Why each was set aside.** Herbarium is warmer and more tactile, but a light
+ground is the wrong choice for an app used in bed at low brightness, and bone
+paper with a serif lands close to the commonest generated-page look. Signal &
+noise is bolder and more graphic, but it is the least grounded in the subject
+matter — a graphite ground with one acid accent is a default rather than a
+choice, and it leans entirely on execution.
+
+**What measuring them actually taught.** Every one of the three palettes, this
+document's included, failed the 3:1 floor on its faded steps when picked by eye.
+That failure is not a property of any hue; it is what happens when a sequential
+ramp is chosen for how it looks rather than for its lightness. Re-stepped to
+pass, the three compare like this:
+
+| direction | ground | usable lightness range | verdict |
+|---|---|---|---|
+| Cyanometer | dark | **0.630** (`.154` → `.784`) | chosen |
+| Signal & noise | dark | **0.742** (`.145` → `.887`) | works; re-steps cleanly |
+| Herbarium | light | **0.194** (`.020` → `.215`) | ramp collapses |
+
+A light ground costs a sequential ramp roughly three-quarters of its range,
+because "faded" naturally wants to be *light* — and on bone paper a light mark
+is an invisible one, so every step has to be dark enough to be seen instead. The
+metaphor inverts the encoding. That is the strongest argument for the dark
+ground, stronger than the reading-in-bed one this document opened with.
+
+Either alternative could be adopted by swapping the tokens at the top of
+`web/src/ui/tokens.css`; nothing else reads a colour literal. The re-stepped
+ramps below already clear 3:1 with monotonic lightness, so they are drop-ins:
+
+```
+Herbarium        #8A7F62  #6E6448  #4A4433  #23282A   (3.25 / 4.80 / 7.93 / 12.20)
+Signal & noise   #666B6E  #8E9497  #B9BEC0  #F2F2F0   (3.30 / 5.79 / 9.49 / 15.88)
+```
+
+Herbarium would additionally need its `--ink-quiet` re-checked: at 3.74:1 it
+clears the mark for large text but sits under the 4.5:1 body-text threshold.
+
 ---
 
 ## 4. Screens

@@ -18,6 +18,8 @@
   /* The one signal. Brass means act now, and means nothing else. */
   --brass: #e3b23c;
   --brass-dim: #6b5320;
+  /* Type set *on* brass. A token, not a literal, so a palette swap is complete. */
+  --on-brass: #2a1f06;
 
   /*
    * The cyanometer ramp: one hue, dark to light, so it reads as a single
@@ -159,7 +161,7 @@ textarea {
   min-height: 52px;
   border-radius: var(--radius);
   background: var(--brass);
-  color: #2a1f06;
+  color: var(--on-brass);
   font-weight: 600;
   font-size: var(--t-ui);
 }
@@ -262,7 +264,9 @@ textarea {
 }
 
 .cyano__bar--read {
-  background: rgba(127, 160, 174, 0.14);
+  /* Derived from the token rather than a frozen copy of it, so this tracks a
+     palette swap instead of quietly keeping the old hue. */
+  background: color-mix(in srgb, var(--ink-quiet) 14%, transparent);
 }
 
 .cyano__fill {
