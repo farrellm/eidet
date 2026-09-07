@@ -1,9 +1,13 @@
 /**
  * The review screen. See DESIGN.md §1 (the loop), §3 (motion), §4 (layout).
  *
- * The card does not flip — it unfolds. One side cues; a tap reveals every other
- * side at once, each with its own strength. Tap a row to mark it missed, then
- * one grade press covers the rest: zero extra taps for a card you knew.
+ * One side cues; a tap reveals every other side at once, each with its own
+ * strength. Tap a row to mark it missed, then one grade press covers the rest:
+ * zero extra taps for a card you knew.
+ *
+ * `CueCard` sits outside the phase branch on purpose. It is the same element in
+ * both phases, which is what lets the reveal dock it from the centre to the top
+ * strip instead of cutting between two different elements (§3).
  */
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
@@ -13,28 +17,35 @@ import {
   type CardBatch,
   type Deck,
   type Grade,
+  type Memory,
   type ReviewSession,
   type Side,
   type SideId,
-  sideLabel,
+  queueSize,
 } from '@eidet/shared'
 import { db } from '../db/db.ts'
-import { commit, currentBatch, isFinished, loadSession, reveal, toggleMissed } from '../session/session.ts'
-import { Ramp, memoryRamp, rampWord } from '../ui/Ramp.tsx'
-import { SideValue } from '../ui/SideValue.tsx'
-
-const GRADES: { rating: Grade; label: string }[] = [
-  { rating: 1, label: 'Again' },
-  { rating: 2, label: 'Hard' },
-  { rating: 3, label: 'Good' },
-  { rating: 4, label: 'Easy' },
-]
+import {
+  canUndo,
+  commit,
+  currentBatch,
+  isFinished,
+  loadSession,
+  reveal,
+  toggleMissed,
+  undo,
+} from '../session/session.ts'
+import { useSyncStatus } from '../sync/SyncContext.tsx'
+import { CueCard } from '../ui/CueCard.tsx'
+import { GradeBar } from '../ui/GradeBar.tsx'
+import { SideRow } from '../ui/SideRow.tsx'
 
 export function Review() {
   const { sessionId = '' } = useParams()
   const navigate = useNavigate()
   const [session, setSession] = useState<ReviewSession | null>(null)
   const [missing, setMissing] = useState(false)
+  const [undoable, setUndoable] = useState(false)
+  const { lastSyncedAt } = useSyncStatus()
 
   // Restore straight from IndexedDB: the session id is in the URL, so a reload
   // lands on the identical screen with the identical queue position (§6).
@@ -50,19 +61,41 @@ export function Review() {
     }
   }, [sessionId])
 
+  // Re-asked on every transition *and* after every sync: a push is what takes
+  // undo away, so the affordance has to disappear when the push lands rather
+  // than lingering until the next grade and failing under the thumb.
+  useEffect(() => {
+    let live = true
+    if (!session) return
+    canUndo(session).then((ok) => {
+      if (live) setUndoable(ok)
+    })
+    return () => {
+      live = false
+    }
+  }, [session, lastSyncedAt])
+
   const batch = session ? currentBatch(session) : undefined
   const card = useLiveQuery(() => (batch ? db.cards.get(batch.cardId) : undefined), [batch?.cardId])
   const deck = useLiveQuery(() => (batch ? db.decks.get(batch.deckId) : undefined), [batch?.deckId])
+  // Fetched once for the whole card rather than once per row: a reveal of six
+  // sides should not open six live queries.
+  const memories = useLiveQuery(
+    () => (batch ? db.memories.where('cardId').equals(batch.cardId).toArray() : []),
+    [batch?.cardId],
+  )
 
   if (missing) return <Gone onLeave={() => navigate('/')} />
   if (!session) return <div className="app" />
   if (isFinished(session)) return <Done session={session} onLeave={() => navigate('/')} />
-  if (!batch || !card || !deck) return <div className="app" />
+  if (!batch || !card || !deck || !memories) return <div className="app" />
 
-  const remaining = session.queue
-    .slice(session.index)
-    .reduce((n, b) => n + b.targetSideIds.length, 0)
+  const cue = card.sides.find((s) => s.id === batch.cueSideId)
+  if (!cue) return <div className="app" />
+
+  const remaining = queueSize(session.queue.slice(session.index))
   const progress = session.queue.length === 0 ? 0 : session.index / session.queue.length
+  const revealed = session.phase === 'revealed'
 
   return (
     <div className="app">
@@ -74,63 +107,48 @@ export function Review() {
         <span className="strip__spacer" />
         <span className="strip__count">{remaining} left</span>
       </div>
-      <div className="progress" role="progressbar" aria-valuenow={Math.round(progress * 100)} aria-valuemin={0} aria-valuemax={100}>
+      <div
+        className="progress"
+        role="progressbar"
+        aria-valuenow={Math.round(progress * 100)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div className="progress__done" style={{ width: `${progress * 100}%` }} />
       </div>
 
-      {session.phase === 'cue' ? (
-        <CuePhase
-          deck={deck}
-          card={card}
-          batch={batch}
-          onReveal={async () => setSession(await reveal(session))}
-        />
-      ) : (
+      <CueCard
+        deck={deck}
+        cue={cue}
+        docked={revealed}
+        hidden={batch.targetSideIds.length + batch.contextSideIds.length}
+      />
+
+      {revealed ? (
         <RevealPhase
           deck={deck}
           card={card}
           batch={batch}
+          memories={memories}
           missed={session.missedSideIds}
           onToggle={async (id) => setSession(await toggleMissed(session, id))}
           onGrade={async (rating) => setSession(await commit(session, rating))}
         />
+      ) : (
+        <div className="dock">
+          {undoable ? (
+            <p className="undo">
+              <button className="link" onClick={async () => setSession(await undo(session))}>
+                Undo last grade
+              </button>
+            </p>
+          ) : null}
+          <button className="action" onClick={async () => setSession(await reveal(session))}>
+            Reveal
+          </button>
+        </div>
       )}
     </div>
-  )
-}
-
-function CuePhase({
-  deck,
-  card,
-  batch,
-  onReveal,
-}: {
-  deck: Deck
-  card: Card
-  batch: CardBatch
-  onReveal: () => void
-}) {
-  const cue = card.sides.find((s) => s.id === batch.cueSideId)
-  const hidden = batch.targetSideIds.length + batch.contextSideIds.length
-  if (!cue) return null
-
-  return (
-    <>
-      <div className="stage">
-        <div className="cue">
-          <SideValue side={cue} />
-        </div>
-        <p className="label stage__label">{sideLabel(deck, cue)}</p>
-        <p className="fold">
-          {hidden} {hidden === 1 ? 'side' : 'sides'} hidden
-        </p>
-      </div>
-      <div className="dock">
-        <button className="action" onClick={onReveal}>
-          Reveal
-        </button>
-      </div>
-    </>
   )
 }
 
@@ -138,6 +156,7 @@ function RevealPhase({
   deck,
   card,
   batch,
+  memories,
   missed,
   onToggle,
   onGrade,
@@ -145,97 +164,35 @@ function RevealPhase({
   deck: Deck
   card: Card
   batch: CardBatch
+  memories: Memory[]
   missed: SideId[]
   onToggle: (id: SideId) => void
   onGrade: (rating: Grade) => void
 }) {
-  const cue = card.sides.find((s) => s.id === batch.cueSideId)
   const byId = new Map(card.sides.map((s) => [s.id, s]))
-  const targets = batch.targetSideIds.map((id) => byId.get(id)).filter(Boolean) as Side[]
-  const context = batch.contextSideIds.map((id) => byId.get(id)).filter(Boolean) as Side[]
+  const memoryOf = new Map(memories.map((m) => [m.sideId, m]))
+  const pick = (ids: SideId[]) => ids.map((id) => byId.get(id)).filter(Boolean) as Side[]
+  const targets = pick(batch.targetSideIds)
+  const context = pick(batch.contextSideIds)
 
   return (
     <>
-      <div className="docked">
-        <span className="docked__cue">{cue ? <SideValue side={cue} inline /> : null}</span>
-        <span className="label">{cue ? sideLabel(deck, cue) : ''}</span>
-      </div>
-
       <div className="reveal">
-        {targets.map((side, i) => (
+        {[...targets, ...context].map((side, i) => (
           <SideRow
             key={side.id}
             deck={deck}
             side={side}
+            memory={memoryOf.get(side.id)}
             index={i}
-            missed={missed.includes(side.id)}
-            onToggle={() => onToggle(side.id)}
-          />
-        ))}
-        {context.map((side, i) => (
-          <SideRow
-            key={side.id}
-            deck={deck}
-            side={side}
-            index={targets.length + i}
-            context
+            context={i >= targets.length}
             missed={missed.includes(side.id)}
             onToggle={() => onToggle(side.id)}
           />
         ))}
       </div>
-
-      <div className="dock grades">
-        {GRADES.map((g) => (
-          <button key={g.rating} className="grade" onClick={() => onGrade(g.rating)}>
-            {g.label}
-          </button>
-        ))}
-      </div>
+      <GradeBar onGrade={onGrade} />
     </>
-  )
-}
-
-function SideRow({
-  deck,
-  side,
-  index,
-  missed,
-  context = false,
-  onToggle,
-}: {
-  deck: Deck
-  side: Side
-  index: number
-  missed: boolean
-  context?: boolean
-  onToggle: () => void
-}) {
-  const now = Date.now()
-  const memory = useLiveQuery(() => db.memories.get(side.id), [side.id])
-  const step = memoryRamp(memory, now)
-
-  return (
-    <button
-      type="button"
-      className={`row${missed ? ' row--missed' : ''}${context ? ' row--context' : ''}`}
-      style={{ '--i': index } as React.CSSProperties}
-      onClick={onToggle}
-      aria-pressed={missed}
-      aria-label={`${sideLabel(deck, side)}${missed ? ', missed' : ''}. Tap to mark ${missed ? 'known' : 'missed'}.`}
-    >
-      <span className="row__head">
-        <span className="label">{sideLabel(deck, side)}</span>
-        {context ? (
-          <span className="label row__note">not due</span>
-        ) : (
-          <Ramp step={step} label={`recall ${rampWord(step)}`} />
-        )}
-      </span>
-      <span className="content row__value">
-        <SideValue side={side} />
-      </span>
-    </button>
   )
 }
 
@@ -245,7 +202,7 @@ function Done({ session, onLeave }: { session: ReviewSession; onLeave: () => voi
       <div className="strip">
         <span className="strip__spacer" />
       </div>
-      <div className="stage">
+      <div className="state">
         <p className="content">
           {session.gradedCount} {session.gradedCount === 1 ? 'side' : 'sides'} reviewed.
         </p>
@@ -263,7 +220,7 @@ function Done({ session, onLeave }: { session: ReviewSession; onLeave: () => voi
 function Gone({ onLeave }: { onLeave: () => void }) {
   return (
     <div className="app">
-      <div className="stage">
+      <div className="state">
         <p className="content">That session has finished.</p>
       </div>
       <div className="dock">

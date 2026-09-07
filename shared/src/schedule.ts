@@ -8,7 +8,6 @@
 import {
   createEmptyCard,
   fsrs,
-  generatorParameters,
   default_w,
   type Card as FsrsCard,
   type FSRS,
@@ -27,8 +26,6 @@ import {
   type ReviewId,
   type SideId,
 } from './types.ts'
-
-const DAY_MS = 86_400_000
 
 /**
  * Defaults for a phone-first, single-user collection.
@@ -51,6 +48,8 @@ export interface SchedulerOptions {
   /** Trained weights; falls back to the FSRS-6 defaults. */
   w?: number[]
   requestRetention?: number
+  /** Sub-day steps for a first encounter; the FSRS default is 1m then 10m. */
+  learningSteps?: string[]
   /** Off for replay, which must be deterministic. */
   fuzz?: boolean
 }
@@ -60,6 +59,8 @@ export function scheduler(options: SchedulerOptions = {}): FSRS {
     ...DEFAULT_PARAMS,
     w: options.w ?? [...default_w],
     request_retention: options.requestRetention ?? DEFAULT_PARAMS.request_retention,
+    learning_steps: (options.learningSteps ??
+      DEFAULT_PARAMS.learning_steps) as FSRSParameters['learning_steps'],
     enable_fuzz: options.fuzz ?? DEFAULT_PARAMS.enable_fuzz,
   })
 }
@@ -68,8 +69,12 @@ export function scheduler(options: SchedulerOptions = {}): FSRS {
  * A short, stable content hash of the weights in force, stored on each review so
  * the log records which parameters produced it.
  */
-export function paramsHash(w: number[], requestRetention: number): string {
-  const text = `${requestRetention}|${w.map((n) => n.toFixed(6)).join(',')}`
+export function paramsHash(
+  w: number[],
+  requestRetention: number,
+  learningSteps: string[],
+): string {
+  const text = `${requestRetention}|${learningSteps.join(',')}|${w.map((n) => n.toFixed(6)).join(',')}`
   // FNV-1a, 32-bit. Not cryptographic — this identifies a parameter set, and the
   // full weights live in `paramSets` keyed by this value.
   let h = 0x811c9dc5
@@ -80,12 +85,28 @@ export function paramsHash(w: number[], requestRetention: number): string {
   return h.toString(16).padStart(8, '0')
 }
 
-export function paramSet(w: number[], requestRetention: number, now: number): ParamSet {
-  return { hash: paramsHash(w, requestRetention), w, requestRetention, createdAt: now }
+export function paramSet(
+  w: number[],
+  requestRetention: number,
+  learningSteps: string[],
+  now: number,
+): ParamSet {
+  return {
+    hash: paramsHash(w, requestRetention, learningSteps),
+    w,
+    requestRetention,
+    learningSteps,
+    createdAt: now,
+  }
 }
 
 export function defaultParamSet(now: number): ParamSet {
-  return paramSet([...default_w], DEFAULT_PARAMS.request_retention, now)
+  return paramSet(
+    [...default_w],
+    DEFAULT_PARAMS.request_retention,
+    [...DEFAULT_PARAMS.learning_steps],
+    now,
+  )
 }
 
 // ------------------------------------------------------- ts-fsrs conversion
@@ -132,17 +153,24 @@ export function newMemory(
 }
 
 /**
+ * The instance behind the default argument below. Built once: `retrievability`
+ * is called per side on every render of the home screen and the hero chart, and
+ * evaluating `scheduler()` as a default argument constructed a fresh FSRS for
+ * each of them. It takes no options, so there is only ever one of it to have.
+ */
+let readOnlyScheduler: FSRS | undefined
+
+/**
  * Current probability of recall, 0–1. Drives cue selection (§1) and is the value
  * the whole interface visualises (§3) — the ramp is this number.
  */
-export function retrievability(m: Memory, now: number, fsrsInstance = scheduler()): number {
+export function retrievability(
+  m: Memory,
+  now: number,
+  fsrsInstance = (readOnlyScheduler ??= scheduler()),
+): number {
   if (m.lastReview === null) return 0
   return fsrsInstance.get_retrievability(toFsrsCard(m), new Date(now), false)
-}
-
-/** How overdue a side is, in days. Negative means not yet due. */
-export function overdueDays(m: Memory, now: number): number {
-  return (now - m.due) / DAY_MS
 }
 
 export interface GradeResult {
@@ -168,6 +196,7 @@ export function grade(args: {
   const s = scheduler({
     w: params.w,
     requestRetention: params.requestRetention,
+    learningSteps: params.learningSteps,
     ...(fuzz === undefined ? {} : { fuzz }),
   })
   const { card } = s.next(toFsrsCard(memory), new Date(now), rating as FsrsGrade)
@@ -205,7 +234,12 @@ export function replay(
 ): Memory {
   const ordered = [...reviews].sort((a, b) => a.reviewedAt - b.reviewedAt)
   const first = ordered[0]
-  const s = scheduler({ w: params.w, requestRetention: params.requestRetention, fuzz: false })
+  const s = scheduler({
+    w: params.w,
+    requestRetention: params.requestRetention,
+    learningSteps: params.learningSteps,
+    fuzz: false,
+  })
   let memory = newMemory(ids, first ? first.reviewedAt : Date.now())
   for (const r of ordered) {
     const { card } = s.next(toFsrsCard(memory), new Date(r.reviewedAt), r.rating as FsrsGrade)

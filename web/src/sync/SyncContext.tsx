@@ -6,20 +6,18 @@
  * is precisely when there is something to push.
  */
 import { createContext, useContext, type ReactNode } from 'react'
-import { useSync } from './useSync.ts'
-import type { SyncStatus } from './sync.ts'
+import { useSync, type SyncControl } from './useSync.ts'
 
-interface SyncInfo {
-  status: SyncStatus
-  lastSyncedAt: number | null
-}
-
-const Context = createContext<SyncInfo>({ status: 'idle', lastSyncedAt: null })
+const Context = createContext<SyncControl>({
+  status: 'idle',
+  lastSyncedAt: null,
+  syncNow: () => {},
+})
 
 export function SyncProvider({ children }: { children: ReactNode }) {
   return <Context.Provider value={useSync()}>{children}</Context.Provider>
 }
 
-export function useSyncStatus(): SyncInfo {
+export function useSyncStatus(): SyncControl {
   return useContext(Context)
 }

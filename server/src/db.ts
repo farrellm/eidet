@@ -87,6 +87,13 @@ const MIGRATIONS: string[] = [
   CREATE TABLE meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
   INSERT INTO meta (key, value) VALUES ('seq', 0);
   `,
+
+  // Learning steps became part of the parameter set, so a change to them
+  // produces a new hash and a replay, like any other parameter change.
+  // Existing rows predate the setting and therefore used the FSRS defaults.
+  `
+  ALTER TABLE paramSets ADD COLUMN learningSteps TEXT NOT NULL DEFAULT '["1m","10m"]';
+  `,
 ]
 
 function migrate(db: DatabaseSync) {

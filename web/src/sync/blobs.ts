@@ -28,6 +28,44 @@ export async function uploadPending(limit = 3): Promise<number> {
   return done
 }
 
+/**
+ * Pull down blobs that arrived by reference. A card synced from another device
+ * names its images by digest, but the bytes travel on their own queue, so
+ * without this pass the image side renders "not on this device yet" forever.
+ *
+ * It scans every local card rather than only the ones just pulled, so a
+ * download that failed on an earlier pass is retried on the next one instead of
+ * being stranded. Bounded per pass for the same reason uploads are: a review
+ * must never queue behind a photo.
+ */
+export async function downloadMissing(limit = 3): Promise<number> {
+  const cards = await db.cards.toArray()
+  const wanted = new Set<string>()
+  for (const card of cards) {
+    if (card.deletedAt !== null) continue
+    for (const side of card.sides) {
+      if (side.kind === 'image' && side.value) wanted.add(side.value)
+    }
+  }
+  if (wanted.size === 0) return 0
+
+  const held = new Set(await db.blobs.where('sha256').anyOf([...wanted]).primaryKeys())
+  let done = 0
+  let tried = 0
+  for (const sha256 of wanted) {
+    // Attempts are what the budget counts, not successes: a card can name a
+    // digest the other device has not uploaded yet, and the 404 that comes back
+    // must not stall every download behind it — on this pass or on any later
+    // one, since the scan order is stable. A dead network throws instead, which
+    // ends the whole sync as it should.
+    if (tried >= limit) break
+    if (held.has(sha256)) continue
+    tried++
+    if (await fetchMissing(sha256)) done++
+  }
+  return done
+}
+
 /** Fetch a blob referenced by a synced card that this device has never seen. */
 export async function fetchMissing(sha256: string): Promise<boolean> {
   if (await db.blobs.get(sha256)) return true

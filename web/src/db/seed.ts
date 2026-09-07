@@ -3,7 +3,7 @@
  * only from the dev console via `window.__seed()`.
  */
 import { db } from './db.ts'
-import { blankSide, createDeck, currentParams, saveCard } from './mutations.ts'
+import { blankSide, createDeck, currentParams, deleteDeck, saveCard } from './mutations.ts'
 import { type Card, type Deck, type Grade, grade } from '@eidet/shared'
 
 const KANJI: [string, string, string][] = [
@@ -12,12 +12,47 @@ const KANJI: [string, string, string][] = [
   ['憾', 'カン', 'regret, remorse'],
   ['懇', 'コン', 'sincere, cordial'],
   ['慕', 'ボ', 'yearn for, long for'],
+  ['慰', 'イ', 'consolation, amusement'],
+  ['憧', 'ショウ', 'yearn after, long for'],
+  ['懲', 'チョウ', 'chastise, punish'],
+  ['憬', 'ケイ', 'hanker after'],
+  ['惧', 'グ', 'fear, dread'],
+  ['愕', 'ガク', 'astonishment, shock'],
+  ['惰', 'ダ', 'laziness, inactivity'],
+  ['慨', 'ガイ', 'rue, lament, deplore'],
+  ['憤', 'フン', 'indignation, resentment'],
+  ['懐', 'カイ', 'nostalgia, bosom, heart'],
 ]
 
 const BIRDS: [string, string][] = [
   ['Winter wren', 'A long tumbling cascade, ten seconds without a breath'],
   ['Song thrush', 'Every phrase repeated two or three times'],
   ['Chiffchaff', 'Its own name, over and over, two notes'],
+  ['Blackcap', 'A scratchy warble that opens out into clear fluting'],
+  ['Willow warbler', 'A wistful descending scale, fading at the end'],
+  ['Garden warbler', 'Like a blackcap but even, and it never resolves'],
+  ['Nuthatch', 'A loud ringing whistle, all on one note'],
+  ['Treecreeper', 'Thin and high, a phrase that falls then flicks up'],
+  ['Mistle thrush', 'Short wild phrases with long silences between'],
+  ['Redstart', 'A brief sweet opening, then a dry rattle'],
+]
+
+/** Four sides, one of them untested — context that is shown but never graded. */
+const ANATOMY: [string, string, string, string][] = [
+  ['Biceps brachii', 'Flexes the elbow, supinates the forearm', 'Musculocutaneous', 'Two heads, hence the name'],
+  ['Brachialis', 'Flexes the elbow', 'Musculocutaneous', 'The workhorse under the biceps'],
+  ['Triceps brachii', 'Extends the elbow', 'Radial', 'Long head crosses the shoulder too'],
+  ['Deltoid', 'Abducts the arm past fifteen degrees', 'Axillary', 'Supraspinatus starts the movement'],
+  ['Supraspinatus', 'Starts abduction of the arm', 'Suprascapular', 'First of the rotator cuff to tear'],
+  ['Infraspinatus', 'Rotates the arm laterally', 'Suprascapular', ''],
+  ['Teres minor', 'Rotates the arm laterally', 'Axillary', 'The only cuff muscle on the axillary'],
+  ['Subscapularis', 'Rotates the arm medially', 'Upper and lower subscapular', ''],
+  ['Serratus anterior', 'Protracts and rotates the scapula', 'Long thoracic', 'Winged scapula when it fails'],
+  ['Latissimus dorsi', 'Extends, adducts and medially rotates the arm', 'Thoracodorsal', ''],
+  ['Pronator teres', 'Pronates the forearm', 'Median', ''],
+  ['Supinator', 'Supinates the forearm', 'Radial', 'Deep branch pierces it'],
+  ['Flexor carpi radialis', 'Flexes and abducts the wrist', 'Median', ''],
+  ['Extensor carpi ulnaris', 'Extends and adducts the wrist', 'Radial', ''],
 ]
 
 async function deckWith(
@@ -72,8 +107,12 @@ async function backdate() {
 }
 
 export async function seed() {
-  await db.delete()
-  await db.open()
+  // Tombstone what is here rather than dropping the database. A bare wipe takes
+  // the sync cursor with it, so the next pull faithfully restores every deck
+  // from the server and you end up with two of everything.
+  for (const deck of await db.decks.toArray()) {
+    if (deck.deletedAt === null) await deleteDeck(deck.id)
+  }
   await deckWith(
     'Kanji',
     [
@@ -82,6 +121,16 @@ export async function seed() {
       { name: 'meaning', tested: true },
     ],
     KANJI.map((k) => [...k]),
+  )
+  await deckWith(
+    'Anatomy',
+    [
+      { name: 'structure', tested: true },
+      { name: 'action', tested: true },
+      { name: 'innervation', tested: true },
+      { name: 'note', tested: false },
+    ],
+    ANATOMY.map((a) => [...a]),
   )
   await deckWith(
     'Bird calls',

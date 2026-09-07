@@ -15,7 +15,6 @@ import type {
   ParamSet,
   Review,
   ReviewSession,
-  Sha256,
 } from '@eidet/shared'
 
 /** Local-only bookkeeping for the sync engine (§6). */
@@ -102,7 +101,43 @@ export async function enqueue(table: Outbox['table'], rowId: string, now = Date.
   for (const listener of dirtyListeners) listener()
 }
 
-export async function blobUrl(sha256: Sha256): Promise<string | null> {
-  const row = await db.blobs.get(sha256)
-  return row ? URL.createObjectURL(row.data) : null
+/**
+ * Serialises the outbox's send window against anything that takes a row back
+ * out of it — in practice `pushChanges` and `undoCommit` (§6).
+ *
+ * Undo is offered only while a review is unsent, and "unsent" cannot be read
+ * off the outbox alone: a push holds its rows there across the whole request,
+ * so between the POST and the clear the entry still exists for a review the
+ * server has already accepted. Undoing then deletes a row the server keeps, the
+ * next pull brings it back, and `rebuildMemoriesFrom` reinstates the memory —
+ * the undo quietly reverses itself. Holding this across the request closes the
+ * window: an undo either runs before the batch is collected, and the review
+ * never leaves the device, or after the outbox is cleared, where it correctly
+ * declines.
+ *
+ * What remains is delivery the device cannot observe — the server commits and
+ * the response is lost — which leaves the outbox entry standing for a review
+ * that did land. Undo believes it and the next pull restores the review. That
+ * needs an acknowledgement the protocol does not have; it errs towards keeping
+ * a review, which is the direction §5 asks for.
+ *
+ * Web Locks where they exist, because two tabs share one IndexedDB; a promise
+ * chain otherwise (the API wants a secure context, and jsdom has none).
+ */
+const SEND_LOCK = 'eidet:outbox-send'
+let sending: Promise<unknown> = Promise.resolve()
+
+export function withSendLock<T>(run: () => Promise<T>): Promise<T> {
+  // `LockGrantedCallback` is typed as returning the value itself, so a callback
+  // that returns a promise reads back one level too deep. The API awaits it; the
+  // identity `then` is only there to say so to the compiler.
+  if (navigator.locks) return navigator.locks.request(SEND_LOCK, run).then<T, never>((v) => v)
+  // Runs after the previous holder either way: a failed push must not leave
+  // every later one waiting on a rejection that never settles.
+  const next = sending.then<T, T>(run, run)
+  sending = next.then(
+    () => {},
+    () => {},
+  )
+  return next
 }

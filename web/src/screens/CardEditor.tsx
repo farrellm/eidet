@@ -16,6 +16,7 @@ import { db } from '../db/db.ts'
 import { blankCard, blankSide, deleteCard, newId, saveCard } from '../db/mutations.ts'
 import { resetSide } from '../db/mutations.ts'
 import { formatWhen } from '../ui/format.ts'
+import { Ramp, memoryRamp } from '../ui/Ramp.tsx'
 import { ImageSideInput } from '../ui/ImageSideInput.tsx'
 
 export function CardEditor() {
@@ -91,11 +92,20 @@ export function CardEditor() {
       </div>
 
       <div className="editor">
-        {card.sides.map((side) => (
+        {card.sides.map((side, i) => (
           <SideEditor
             key={side.id}
             deck={deck}
             side={side}
+            // Order is the card's own, so it only means anything where the card
+            // owns its sides. A schema deck's order belongs to the deck.
+            onMove={
+              deck.mode === 'freeform'
+                ? (by) => edit({ ...card, sides: moveSide(card.sides, i, by) })
+                : undefined
+            }
+            first={i === 0}
+            last={i === card.sides.length - 1}
             onChange={(patch) => setSide(side.id, patch)}
             onRemove={
               deck.mode === 'freeform'
@@ -132,15 +142,31 @@ export function CardEditor() {
   )
 }
 
+/** Sides in a new order, with `at` shifted one place. */
+function moveSide(sides: Side[], at: number, by: -1 | 1): Side[] {
+  const to = at + by
+  if (to < 0 || to >= sides.length) return sides
+  const next = [...sides]
+  const [moved] = next.splice(at, 1)
+  next.splice(to, 0, moved!)
+  return next
+}
+
 function SideEditor({
   deck,
   side,
+  first,
+  last,
   onChange,
+  onMove,
   onRemove,
 }: {
   deck: Deck
   side: Side
+  first: boolean
+  last: boolean
   onChange: (patch: Partial<Side>) => void
+  onMove?: ((by: -1 | 1) => void) | undefined
   onRemove?: (() => void) | undefined
 }) {
   const memory = useLiveQuery(() => db.memories.get(side.id), [side.id])
@@ -151,7 +177,7 @@ function SideEditor({
       <div className="field__head">
         {deck.mode === 'freeform' ? (
           <input
-            className="field__label-input label"
+            className="field__label-input"
             value={side.label ?? ''}
             placeholder="Side name"
             onChange={(e) => onChange({ label: e.target.value })}
@@ -170,6 +196,26 @@ function SideEditor({
               />
               <span className="label">Test this</span>
             </label>
+          ) : null}
+          {onMove ? (
+            <>
+              <button
+                className="link"
+                onClick={() => onMove(-1)}
+                disabled={first}
+                aria-label={`Move ${sideLabel(deck, side) || 'this side'} up`}
+              >
+                Up
+              </button>
+              <button
+                className="link"
+                onClick={() => onMove(1)}
+                disabled={last}
+                aria-label={`Move ${sideLabel(deck, side) || 'this side'} down`}
+              >
+                Down
+              </button>
+            </>
           ) : null}
           {onRemove ? (
             <button className="link" onClick={onRemove}>
@@ -195,6 +241,9 @@ function SideEditor({
         <p className="field__schedule">
           {memory ? (
             <>
+              {/* §4 wants the side's strength here too. It is the same ramp as
+                  everywhere else, not a spelled-out R. */}
+              <Ramp step={memoryRamp(memory, now)} />
               <span className="num">due {formatWhen(memory.due, now)}</span>
               <span className="num">
                 {memory.reps} {memory.reps === 1 ? 'review' : 'reviews'}

@@ -5,6 +5,7 @@ import { DeckScreen } from './screens/DeckScreen.tsx'
 import { DeckSettings } from './screens/DeckSettings.tsx'
 import { CardEditor } from './screens/CardEditor.tsx'
 import { Review } from './screens/Review.tsx'
+import { Settings } from './screens/Settings.tsx'
 import { UpdatePrompt } from './ui/UpdatePrompt.tsx'
 
 export function App() {
@@ -13,6 +14,7 @@ export function App() {
       <UpdatePrompt />
       <Routes>
         <Route path="/" element={<Today />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="/deck/new" element={<DeckSettings />} />
         <Route path="/deck/:deckId" element={<DeckScreen />} />
         <Route path="/deck/:deckId/settings" element={<DeckSettings />} />
