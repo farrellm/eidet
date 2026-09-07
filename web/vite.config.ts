@@ -2,8 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Ports: 5173/5174/5176 and 8080-8082/8090 belong to other projects on this
-// machine, so eidet takes 5175 (web) and 8083 (server).
+// Ports: 5173/5174/5176/5199/5273 and 8080-8082/8090/8096/8173 belong to other
+// projects on this machine, so eidet takes 5175 (web) and 8083 (server).
 export default defineConfig({
   plugins: [
     react(),

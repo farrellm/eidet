@@ -16,13 +16,23 @@ make e2e          # offline/PWA suite (builds first; needs a prod build)
 make build        # vite build -> web/dist, incl. service worker
 ```
 
-- **Ports: web 5175, server 8083, deployed 8091, Playwright 8087.**
-  5173/5174/5176 and 8080–8082/8090 belong to other projects on this machine.
-  Vite proxies `/api` → 8083. The e2e run wipes `web/.e2e-data` first: the suite
-  asserts exact row counts, so a leftover database makes every one of them wrong
-  in a way that looks like a sync bug.
+- **Ports: web 5175, server 8083, deployed 8091, Playwright 8087; tailnet 8445.**
+  Other projects on this machine hold 5173/5174/5176/5199/5273,
+  8080–8082/8090/8096/8173, Postgres 5432/5434/5435, and `tailscale serve`
+  443/8443/8444 — check `ss -tlnp` and `tailscale serve status` before taking a
+  new one. Vite proxies `/api` → 8083. The e2e run wipes `web/.e2e-data` first:
+  the suite asserts exact row counts, so a leftover database makes every one of
+  them wrong in a way that looks like a sync bug.
 - Server data lives in `EIDET_DATA` (default `./data`): `eidet.db` plus a
-  content-addressed `blobs/` tree.
+  content-addressed `blobs/` tree. `EIDET_HOST` (default `127.0.0.1`) is the bind
+  address: the app has no auth, so the only way in is the `tailscale serve` proxy.
+- **The deployed instance is a systemd *user* unit**
+  (`~/.config/systemd/user/eidet.service`) on `127.0.0.1:8091`, published to the
+  tailnet by `tailscale serve` on :8445 — HTTPS is what gives the phone a secure
+  context, and without one there is no service worker and no offline mode at all
+  (§6). It shares `data/` with `make dev`, which is why `db.ts` sets a
+  `busy_timeout`. Deploy with `make deploy`; logs are
+  `journalctl --user -u eidet -f`.
 
 ## The one idea everything follows from
 

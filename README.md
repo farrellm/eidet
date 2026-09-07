@@ -30,5 +30,17 @@ Two things are not optional:
   might not open for a fortnight, that is the difference between working and
   losing your local state.
 
+`make deploy` builds and restarts the systemd user unit
+(`~/.config/systemd/user/eidet.service`), which serves the app and the API from
+one process on `127.0.0.1:8091` and publishes it to the tailnet:
+
+```bash
+tailscale serve --bg --https=8445 http://127.0.0.1:8091
+```
+
+`tailscale serve status` prints the resulting `https://<host>.ts.net:8445` URL.
+Open it on the phone and add it to the Home Screen. Logs are
+`journalctl --user -u eidet -f`.
+
 See [DESIGN.md](DESIGN.md) for the design; it is the authoritative document and
 the code cites its sections.

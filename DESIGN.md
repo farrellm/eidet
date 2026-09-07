@@ -477,7 +477,9 @@ splitting 700 coherent lines apart for. The rule that replaces them: never stack
 a typographic class (`.label`, `.content`) onto an element whose own class
 overrides it — set both properties in the one place.
 
-**Ports** (5173/5174/5176/8080/8081/8082/8090 are taken by other projects): dev web **5175**, dev server **8083**, deployed **8091** behind `tailscale serve`. The Playwright suite runs its own server on **8087**.
+**Ports** (5173/5174/5176/5199/5273, 8080–8082/8090/8096/8173, Postgres 5432/5434/5435 and `tailscale serve` 443/8443/8444 are taken by other projects on this machine): dev web **5175**, dev server **8083**, deployed **8091**. The Playwright suite runs its own server on **8087**.
+
+The deployed instance is a systemd *user* unit, `~/.config/systemd/user/eidet.service`, bound to `127.0.0.1:8091` — loopback only, because the app has no auth (§1 non-goals) and the sole way in is the proxy. `tailscale serve` publishes it to the tailnet on **:8445** (`tailscale serve --bg --https=8445 http://127.0.0.1:8091`), which is where the HTTPS of §6 comes from. The unit carries that command in `ExecStartPost` and its `off` in `ExecStopPost`, so the unit stays the single source of truth for how eidet is exposed even though tailscaled persists the serve config itself. It runs against the same `data/` as `make dev`: one set of cards is the point, and `db.ts` sets a `busy_timeout` so the overlap waits rather than failing. `make deploy` restarts it; `journalctl --user -u eidet -f` is the log.
 
 ---
 
