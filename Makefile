@@ -1,8 +1,9 @@
 # eidet — see DESIGN.md for what any of this means.
 .PHONY: dev web server build test e2e typecheck deploy clean
 
-# Ports: 5175 web, 8083 server, 8091 deployed. 5173/5174/5176 and 8080-8082/8090
-# belong to other projects on this machine.
+# Ports: 5175 web, 8083 server, 8091 deployed (tailnet :8445), 8087 Playwright.
+# 5173/5174/5176/5199/5273, 8080-8082/8090/8096/8173, Postgres 5432/5434/5435 and
+# tailscale serve 443/8443/8444 belong to other projects on this machine.
 export EIDET_PORT ?= 8083
 export EIDET_DATA ?= ./data
 

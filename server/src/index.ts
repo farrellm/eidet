@@ -13,6 +13,9 @@ import { pull, push } from './changes.ts'
 import { BlobStore } from './blobs.ts'
 
 const PORT = Number(process.env.EIDET_PORT ?? 8083)
+// Loopback by default: there is no auth, so the only way in is the
+// `tailscale serve` proxy in front of the deployed instance (DESIGN.md §7).
+const HOST = process.env.EIDET_HOST ?? '127.0.0.1'
 const DATA = process.env.EIDET_DATA ?? './data'
 const WEB = process.env.EIDET_WEB ?? '../web/dist'
 
@@ -118,6 +121,6 @@ async function serveStatic(pathname: string, res: import('node:http').ServerResp
   }
 }
 
-server.listen(PORT, () => {
-  console.log(`eidet server on http://localhost:${PORT} (data: ${DATA})`)
+server.listen(PORT, HOST, () => {
+  console.log(`eidet server on http://${HOST}:${PORT} (data: ${DATA})`)
 })
