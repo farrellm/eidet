@@ -4,13 +4,23 @@
  * Each card row shows its sides as ramp marks, so which cards are decaying is
  * visible without opening anything.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { type Card, type Deck, type Memory, sideFilled, sideLabel, sideTested } from '@eidet/shared'
+import {
+  type Card,
+  type Deck,
+  type Memory,
+  groupBy,
+  sideFilled,
+  sideLabel,
+  sideTested,
+} from '@eidet/shared'
 import { db } from '../db/db.ts'
 import { startSession } from '../session/session.ts'
 import { Ramp, memoryRamp } from '../ui/Ramp.tsx'
+import { useScrollMemory } from '../ui/useScrollMemory.ts'
+import { countOf } from '../ui/format.ts'
 
 export function DeckScreen() {
   const { deckId = '' } = useParams()
@@ -32,12 +42,7 @@ export function DeckScreen() {
   if (!deck || !cards || !memories) return <div className="app" />
 
   const due = memories.filter((m) => m.due <= now).length
-  const byCard = new Map<string, Memory[]>()
-  for (const m of memories) {
-    const list = byCard.get(m.cardId)
-    if (list) list.push(m)
-    else byCard.set(m.cardId, [m])
-  }
+  const byCard = groupBy(memories, (m) => m.cardId)
 
   // Search runs over every side's text, because any side can be the one you
   // remember a card by — there is no "front" to privilege.
@@ -72,7 +77,7 @@ export function DeckScreen() {
             className="search__input"
             type="search"
             value={query}
-            placeholder={`Search ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}`}
+            placeholder={`Search ${countOf(cards.length, 'card')}`}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Search cards"
           />
@@ -106,7 +111,7 @@ export function DeckScreen() {
       <div className="dock">
         {due > 0 ? (
           <button className="action" onClick={start}>
-            Review {due} {due === 1 ? 'side' : 'sides'}
+            Review {countOf(due, 'side')}
           </button>
         ) : null}
         <button
@@ -118,56 +123,6 @@ export function DeckScreen() {
       </div>
     </div>
   )
-}
-
-/**
- * Put a scrolling list back where it was. See DESIGN.md §6 — the `uiState`
- * record is the other half of "a reload returns to exactly the same state":
- * the session covers the review, this covers everything you were looking at.
- *
- * Restored once, after the rows exist; saved on scroll, throttled through a
- * frame so a flick does not write on every event.
- *
- * A callback ref rather than a `useRef`, because the list is not in the tree on
- * the first commit: the screen renders a placeholder until Dexie answers. An
- * effect keyed on `key` alone ran once against a null ref and never again, so
- * neither the restore nor the listener ever happened. The element itself has to
- * be the dependency.
- */
-function useScrollMemory(key: string) {
-  const [el, setEl] = useState<HTMLDivElement | null>(null)
-  const restored = useRef(false)
-
-  useEffect(() => {
-    if (!el) return
-
-    let frame = 0
-    let live = true
-    const onScroll = () => {
-      if (frame) return
-      frame = requestAnimationFrame(() => {
-        frame = 0
-        void db.ui.put({ key, value: el.scrollTop })
-      })
-    }
-
-    void db.ui.get(key).then((row) => {
-      // The read is async, so the list may already be gone by the time it
-      // lands — attaching then would leak a listener the cleanup has run past.
-      if (!live) return
-      if (!restored.current && typeof row?.value === 'number') el.scrollTop = row.value
-      restored.current = true
-      el.addEventListener('scroll', onScroll, { passive: true })
-    })
-
-    return () => {
-      live = false
-      cancelAnimationFrame(frame)
-      el.removeEventListener('scroll', onScroll)
-    }
-  }, [key, el])
-
-  return setEl
 }
 
 function CardRow({

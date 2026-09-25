@@ -4,14 +4,10 @@
  * The four grades are peers — none of them is the action of the moment, so none
  * of them wears brass (§3 principle 3).
  */
-import type { Grade } from '@eidet/shared'
+import { Grade } from '@eidet/shared'
 
-const GRADES: { rating: Grade; label: string }[] = [
-  { rating: 1, label: 'Again' },
-  { rating: 2, label: 'Hard' },
-  { rating: 3, label: 'Good' },
-  { rating: 4, label: 'Easy' },
-]
+/** In the order the bar shows them; the label is the key's own name. */
+const GRADES = Object.entries(Grade).map(([label, rating]) => ({ label, rating }))
 
 export function GradeBar({ onGrade }: { onGrade: (rating: Grade) => void }) {
   return (

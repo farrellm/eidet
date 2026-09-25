@@ -4,6 +4,7 @@
  * Pure functions over plain data — no clock, no database, no React. Screens
  * never do date maths; they call in here.
  */
+import { groupBy } from './collections.ts'
 import { defaultScheduler, retrievability } from './schedule.ts'
 import { sideFilled, sideTested } from './sides.ts'
 import type { Card, CardBatch, Deck, DeckId, Memory, Side, SideId } from './types.ts'
@@ -137,12 +138,7 @@ export function interleave(
 ): CardBatch[] {
   // Scored once up front: the sort and the pick loop both consult it.
   const score = new Map(batches.map((b) => [b, urgency(b, memories, now)]))
-  const byDeck = new Map<DeckId, CardBatch[]>()
-  for (const b of batches) {
-    const list = byDeck.get(b.deckId)
-    if (list) list.push(b)
-    else byDeck.set(b.deckId, [b])
-  }
+  const byDeck = groupBy(batches, (b) => b.deckId)
   for (const list of byDeck.values()) list.sort((a, b) => score.get(b)! - score.get(a)!)
 
   const out: CardBatch[] = []

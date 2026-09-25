@@ -8,7 +8,8 @@
     "./types": "./src/types.ts",
     "./sides": "./src/sides.ts",
     "./schedule": "./src/schedule.ts",
-    "./queue": "./src/queue.ts"
+    "./queue": "./src/queue.ts",
+    "./collections": "./src/collections.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

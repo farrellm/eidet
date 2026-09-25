@@ -29,7 +29,7 @@ import {
   resetSide,
   saveCard,
 } from '../db/mutations.ts'
-import { formatWhen } from '../ui/format.ts'
+import { countOf, formatWhen } from '../ui/format.ts'
 import { Ramp, memoryRamp } from '../ui/Ramp.tsx'
 import { ImageSideInput } from '../ui/ImageSideInput.tsx'
 
@@ -262,7 +262,7 @@ function SideEditor({
               <Ramp step={memoryRamp(memory, now)} />
               <span className="num">due {formatWhen(memory.due, now)}</span>
               <span className="num">
-                {memory.reps} {memory.reps === 1 ? 'review' : 'reviews'}
+                {countOf(memory.reps, 'review')}
               </span>
               {memory.reps > 0 ? (
                 <button className="link" onClick={() => resetSide(side.id)}>

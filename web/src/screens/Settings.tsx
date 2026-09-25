@@ -16,7 +16,7 @@ import { DEFAULT_PARAMS, paramSet } from '@eidet/shared'
 import { db } from '../db/db.ts'
 import { replayAll, setParams } from '../db/mutations.ts'
 import { useCurrentParams } from '../db/useParams.ts'
-import { formatWhen } from '../ui/format.ts'
+import { countOf, formatWhen } from '../ui/format.ts'
 import { useSyncStatus } from '../sync/SyncContext.tsx'
 
 /** Retention targets worth offering. Below .8 you forget; above .95 you grind. */
@@ -80,7 +80,7 @@ export function Settings() {
                 ? `Last synced ${formatWhen(lastSyncedAt, now)}.`
                 : 'Syncing.'}
             {counts.unsent > 0
-              ? ` ${counts.unsent} ${counts.unsent === 1 ? 'change' : 'changes'} still to send.`
+              ? ` ${countOf(counts.unsent, 'change')} still to send.`
               : ''}
           </p>
           <button className="action action--quiet" onClick={syncNow} disabled={status === 'syncing'}>
@@ -148,10 +148,8 @@ export function Settings() {
         <section>
           <h2 className="settings__head">Storage</h2>
           <p className="rest rest--tight">
-            {counts.decks} {counts.decks === 1 ? 'deck' : 'decks'}, {counts.cards}{' '}
-            {counts.cards === 1 ? 'card' : 'cards'}, {counts.sides} scheduled{' '}
-            {counts.sides === 1 ? 'side' : 'sides'}, {counts.reviews}{' '}
-            {counts.reviews === 1 ? 'review' : 'reviews'}.
+            {countOf(counts.decks, 'deck')}, {countOf(counts.cards, 'card')},{' '}
+            {countOf(counts.sides, 'scheduled side')}, {countOf(counts.reviews, 'review')}.
           </p>
           <p className="rest rest--tight">
             {usage === null ? 'Measuring what it takes up.' : `Using ${formatBytes(usage)}.`}

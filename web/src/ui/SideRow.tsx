@@ -5,6 +5,7 @@
  * gives it a brass left rule. No small icons: this is a thumb on a phone.
  * Untested sides come along as context and carry no ramp and no grade.
  */
+import type { CSSProperties } from 'react'
 import { type Deck, type Memory, type Side, sideLabel } from '@eidet/shared'
 import { Ramp, memoryRamp, rampWord } from './Ramp.tsx'
 import { SideValue } from './SideValue.tsx'
@@ -34,7 +35,7 @@ export function SideRow({
     <button
       type="button"
       className={`row${missed ? ' row--missed' : ''}${context ? ' row--context' : ''}`}
-      style={{ '--i': index } as React.CSSProperties}
+      style={{ '--i': index } as CSSProperties}
       onClick={onToggle}
       aria-pressed={missed}
       aria-label={`${sideLabel(deck, side)}${missed ? ', missed' : ''}. Tap to mark ${missed ? 'known' : 'missed'}.`}

@@ -32,15 +32,8 @@
 import { useState } from 'react'
 import type { Memory } from '@eidet/shared'
 import { retrievability } from '@eidet/shared'
-import { rampColor, rampWord, type RampStep } from './Ramp.tsx'
-
-/** Upper edge and ramp step of each band, matching `rampStep` in Ramp.tsx. */
-const BANDS: { max: number; step: RampStep }[] = [
-  { max: 0.7, step: 0 },
-  { max: 0.85, step: 1 },
-  { max: 0.95, step: 2 },
-  { max: 1, step: 3 },
-]
+import { countOf } from './format.ts'
+import { RAMP_BANDS as BANDS, rampColor, rampWord, type RampStep } from './Ramp.tsx'
 /** Bins per band. Twenty marks total reads as a distribution; four reads as a bar. */
 const PER_BAND = 5
 
@@ -97,7 +90,7 @@ export function Cyanometer({
   const due = memories.filter((m) => m.due <= now).length
   if (total === 0) return null
 
-  const sides = (n: number) => `${n} ${n === 1 ? 'side' : 'sides'}`
+  const sides = (n: number) => countOf(n, 'side')
 
   return (
     <figure className="cyano">

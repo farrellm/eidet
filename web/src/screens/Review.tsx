@@ -38,6 +38,7 @@ import { useSyncStatus } from '../sync/SyncContext.tsx'
 import { CueCard } from '../ui/CueCard.tsx'
 import { GradeBar } from '../ui/GradeBar.tsx'
 import { SideRow } from '../ui/SideRow.tsx'
+import { countOf } from '../ui/format.ts'
 
 export function Review() {
   const { sessionId = '' } = useParams()
@@ -241,7 +242,7 @@ function Done({ session, onLeave }: { session: ReviewSession; onLeave: () => voi
       </div>
       <div className="state">
         <p className="content">
-          {session.gradedCount} {session.gradedCount === 1 ? 'side' : 'sides'} reviewed.
+          {countOf(session.gradedCount, 'side')} reviewed.
         </p>
         <p className="label">Saved on this phone.</p>
       </div>
