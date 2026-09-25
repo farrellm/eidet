@@ -13,7 +13,7 @@
 import {
   type CardBatch,
   type DeckId,
-  type Grade,
+  Grade,
   type ReviewSession,
   type SessionId,
   type SideId,
@@ -108,10 +108,10 @@ export function plannedGrades(
   const missed = new Set(missedSideIds)
   const out = batch.targetSideIds.map((sideId) => ({
     sideId,
-    rating: (missed.has(sideId) ? 1 : pressed) as Grade,
+    rating: missed.has(sideId) ? Grade.Again : pressed,
   }))
   for (const sideId of batch.contextSideIds) {
-    if (missed.has(sideId)) out.push({ sideId, rating: 1 as Grade })
+    if (missed.has(sideId)) out.push({ sideId, rating: Grade.Again })
   }
   return out
 }
@@ -126,7 +126,12 @@ export async function commit(
   if (!batch) return session
 
   const reviewIds = await commitReveal(
-    { cueSideId: batch.cueSideId, grades: plannedGrades(batch, session.missedSideIds, pressed) },
+    {
+      cardId: batch.cardId,
+      deckId: batch.deckId,
+      cueSideId: batch.cueSideId,
+      grades: plannedGrades(batch, session.missedSideIds, pressed),
+    },
     now,
   )
 

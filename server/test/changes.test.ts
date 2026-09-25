@@ -166,10 +166,12 @@ describe('paging', () => {
     const first = pull(db, 0)
     expect(first.reviews).toHaveLength(PAGE)
     expect(first.seq).toBeGreaterThan(0)
+    expect(first.more).toBe(true)
 
     const second = pull(db, first.seq)
     expect(second.reviews).toHaveLength(5)
     expect(second.seq).toBeGreaterThan(first.seq)
+    expect(second.more).toBe(false)
 
     // Every row arrived exactly once across the two pages.
     const ids = [...first.reviews, ...second.reviews].map((r) => r.id)

@@ -171,8 +171,9 @@ export function pull(db: DatabaseSync, since: number): PullResponse {
   // A full page from any table means there is more behind it, so the client
   // resumes from what it was actually given rather than from the server's
   // current sequence, which would skip the remainder.
-  const seq = Number.isFinite(cap) ? cap : currentSeq(db)
-  return { seq, decks, cards, reviews, paramSets, blobs }
+  const more = Number.isFinite(cap)
+  const seq = more ? cap : currentSeq(db)
+  return { seq, more, decks, cards, reviews, paramSets, blobs }
 }
 
 // -------------------------------------------------------------------- push

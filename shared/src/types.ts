@@ -236,6 +236,8 @@ export interface ChangeSet {
 export interface PullResponse extends ChangeSet {
   seq: number
   blobs: BlobMeta[]
+  /** A table filled its page, so rows remain past `seq`: pull again from it. */
+  more: boolean
 }
 
 export interface PushResponse {
