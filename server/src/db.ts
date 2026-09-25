@@ -6,7 +6,7 @@
  * monotonic `seq` on everything it accepts and hands rows back in `seq` order.
  * That sequence is the whole sync protocol.
  */
-import { DatabaseSync } from 'node:sqlite'
+import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -101,30 +101,49 @@ const MIGRATIONS: string[] = [
 ]
 
 function migrate(db: DatabaseSync) {
-  const row = db.prepare('PRAGMA user_version').get() as { user_version: number }
-  let version = row.user_version
-  for (let i = version; i < MIGRATIONS.length; i++) {
-    db.exec('BEGIN')
-    try {
+  const { user_version } = db.prepare('PRAGMA user_version').get() as { user_version: number }
+  for (let i = user_version; i < MIGRATIONS.length; i++) {
+    transaction(db, () => {
       db.exec(MIGRATIONS[i]!)
       db.exec(`PRAGMA user_version = ${i + 1}`)
-      db.exec('COMMIT')
-    } catch (err) {
-      db.exec('ROLLBACK')
-      throw err
-    }
-    version = i + 1
+    })
   }
+}
+
+/** Run `fn` in one transaction: committed if it returns, rolled back if it throws. */
+export function transaction<T>(db: DatabaseSync, fn: () => T): T {
+  db.exec('BEGIN')
+  try {
+    const result = fn()
+    db.exec('COMMIT')
+    return result
+  } catch (err) {
+    db.exec('ROLLBACK')
+    throw err
+  }
+}
+
+const statements = new WeakMap<DatabaseSync, Map<string, StatementSync>>()
+
+/**
+ * A prepared statement, compiled once per database and reused. A push stamps
+ * and upserts row by row, so re-preparing the same SQL for every row was most
+ * of what it cost.
+ */
+export function stmt(db: DatabaseSync, sql: string): StatementSync {
+  let cache = statements.get(db)
+  if (!cache) statements.set(db, (cache = new Map()))
+  let prepared = cache.get(sql)
+  if (!prepared) cache.set(sql, (prepared = db.prepare(sql)))
+  return prepared
 }
 
 /** The next write sequence. Monotonic across every table — it is the cursor. */
 export function nextSeq(db: DatabaseSync): number {
-  db.prepare("UPDATE meta SET value = value + 1 WHERE key = 'seq'").run()
-  const row = db.prepare("SELECT value FROM meta WHERE key = 'seq'").get() as { value: number }
-  return row.value
+  const row = stmt(db, "UPDATE meta SET value = value + 1 WHERE key = 'seq' RETURNING value").get()
+  return (row as { value: number }).value
 }
 
 export function currentSeq(db: DatabaseSync): number {
-  const row = db.prepare("SELECT value FROM meta WHERE key = 'seq'").get() as { value: number }
-  return row.value
+  return (stmt(db, "SELECT value FROM meta WHERE key = 'seq'").get() as { value: number }).value
 }

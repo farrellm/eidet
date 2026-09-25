@@ -8,12 +8,21 @@
  */
 import { createHash } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { nextSeq } from './db.ts'
+import { nextSeq, stmt } from './db.ts'
 
-const MAX_BYTES = 8 * 1024 * 1024
+/** The largest image the store accepts, after the phone has downscaled it. */
+export const MAX_BLOB_BYTES = 8 * 1024 * 1024
+
+export interface BlobInfo {
+  mime: string
+  width: number
+  height: number
+}
+
+export type PutResult = { stored: true } | { stored: false; error: string }
 
 export class BlobStore {
   // Plain fields, not constructor parameter properties: the server runs under
@@ -28,23 +37,17 @@ export class BlobStore {
   }
 
   /** Two-level fan-out, so a directory never holds a hundred thousand files. */
-  private path(sha256: string) {
-    const shard = join(this.dir, sha256.slice(0, 2))
-    mkdirSync(shard, { recursive: true })
-    return join(shard, sha256)
+  private path(sha256: string): string {
+    return join(this.dir, sha256.slice(0, 2), sha256)
   }
 
   has(sha256: string): boolean {
-    return this.db.prepare('SELECT 1 FROM blobs WHERE sha256 = ?').get(sha256) !== undefined
+    return stmt(this.db, 'SELECT 1 FROM blobs WHERE sha256 = ?').get(sha256) !== undefined
   }
 
-  async put(
-    sha256: string,
-    data: Buffer,
-    meta: { mime: string; width: number; height: number },
-  ): Promise<{ stored: boolean; error?: string }> {
+  async put(sha256: string, data: Buffer, meta: BlobInfo): Promise<PutResult> {
     if (!/^[0-9a-f]{64}$/.test(sha256)) return { stored: false, error: 'bad digest' }
-    if (data.byteLength > MAX_BYTES) return { stored: false, error: 'too large' }
+    if (data.byteLength > MAX_BLOB_BYTES) return { stored: false, error: 'too large' }
 
     // Verify rather than trust: the name of a content-addressed file has to be
     // its content, or the store stops being immutable and cacheable.
@@ -52,17 +55,19 @@ export class BlobStore {
     if (actual !== sha256) return { stored: false, error: 'digest mismatch' }
 
     if (this.has(sha256)) return { stored: true }
-    await writeFile(this.path(sha256), data)
-    this.db
-      .prepare(
-        'INSERT INTO blobs (sha256, mime, bytes, width, height, createdAt, seq) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(sha256) DO NOTHING',
-      )
-      .run(sha256, meta.mime, data.byteLength, meta.width, meta.height, Date.now(), nextSeq(this.db))
+    const path = this.path(sha256)
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, data)
+    stmt(
+      this.db,
+      `INSERT INTO blobs (sha256, mime, bytes, width, height, createdAt, seq)
+       VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(sha256) DO NOTHING`,
+    ).run(sha256, meta.mime, data.byteLength, meta.width, meta.height, Date.now(), nextSeq(this.db))
     return { stored: true }
   }
 
   async get(sha256: string): Promise<{ data: Buffer; mime: string } | null> {
-    const row = this.db.prepare('SELECT mime FROM blobs WHERE sha256 = ?').get(sha256) as
+    const row = stmt(this.db, 'SELECT mime FROM blobs WHERE sha256 = ?').get(sha256) as
       | { mime: string }
       | undefined
     if (!row) return null

@@ -16,11 +16,123 @@
  * loses one edit. Reviews never lose.
  */
 import type { DatabaseSync } from 'node:sqlite'
-import type { Card, ChangeSet, Deck, ParamSet, PullResponse, Review } from '@eidet/shared'
-import { currentSeq, nextSeq } from './db.ts'
+import type {
+  BlobMeta,
+  Card,
+  ChangeSet,
+  Deck,
+  ParamSet,
+  PullResponse,
+  Review,
+} from '@eidet/shared'
+import { currentSeq, nextSeq, stmt, transaction } from './db.ts'
 
 /** How many rows one pull may return, so a cold sync pages rather than stalls. */
 const PAGE = 2000
+
+// ------------------------------------------------------------- stored rows
+//
+// The columns as SQLite hands them back: JSON columns are text, and every row
+// carries the `seq` it was stamped with.
+
+interface Stamped {
+  seq: number
+}
+
+interface DeckRow extends Stamped {
+  id: string
+  name: string
+  mode: Deck['mode']
+  fields: string
+  cuePreference: Deck['cuePreference']
+  order: number
+  updatedAt: number
+  deletedAt: number | null
+}
+
+interface CardRow extends Stamped {
+  id: string
+  deckId: string
+  sides: string
+  updatedAt: number
+  deletedAt: number | null
+}
+
+interface ReviewRow extends Stamped {
+  id: string
+  sideId: string
+  cardId: string
+  deckId: string
+  cueSideId: string | null
+  rating: Review['rating']
+  reviewedAt: number
+  memoryBefore: string | null
+  memoryAfter: string
+  paramsHash: string
+}
+
+interface ParamSetRow extends Stamped {
+  hash: string
+  w: string
+  requestRetention: number
+  learningSteps: string
+  createdAt: number
+}
+
+interface BlobRow extends Stamped, BlobMeta {}
+
+const toDeck = (r: DeckRow): Deck => ({
+  id: r.id,
+  name: r.name,
+  mode: r.mode,
+  fields: JSON.parse(r.fields),
+  cuePreference: r.cuePreference,
+  order: r.order,
+  updatedAt: r.updatedAt,
+  deletedAt: r.deletedAt ?? null,
+  seq: r.seq,
+})
+
+const toCard = (r: CardRow): Card => ({
+  id: r.id,
+  deckId: r.deckId,
+  sides: JSON.parse(r.sides),
+  updatedAt: r.updatedAt,
+  deletedAt: r.deletedAt ?? null,
+  seq: r.seq,
+})
+
+const toReview = (r: ReviewRow): Review => ({
+  id: r.id,
+  sideId: r.sideId,
+  cardId: r.cardId,
+  deckId: r.deckId,
+  cueSideId: r.cueSideId ?? null,
+  rating: r.rating,
+  reviewedAt: r.reviewedAt,
+  memoryBefore: r.memoryBefore ? JSON.parse(r.memoryBefore) : null,
+  memoryAfter: JSON.parse(r.memoryAfter),
+  paramsHash: r.paramsHash,
+})
+
+const toParamSet = (r: ParamSetRow): ParamSet => ({
+  hash: r.hash,
+  w: JSON.parse(r.w),
+  requestRetention: r.requestRetention,
+  learningSteps: JSON.parse(r.learningSteps),
+  createdAt: r.createdAt,
+})
+
+const toBlobMeta = (r: BlobRow): BlobMeta => ({
+  sha256: r.sha256,
+  mime: r.mime,
+  bytes: r.bytes,
+  width: r.width,
+  height: r.height,
+  createdAt: r.createdAt,
+})
+
+// -------------------------------------------------------------------- pull
 
 export function pull(db: DatabaseSync, since: number): PullResponse {
   /*
@@ -40,81 +152,21 @@ export function pull(db: DatabaseSync, since: number): PullResponse {
    * nothing, while a skipped row is never seen again.
    */
   let cap = Number.POSITIVE_INFINITY
-  const rows = <T>(sql: string): T[] => {
-    const page = db.prepare(sql).all(since, PAGE) as (T & { seq: number })[]
+  const page = <Row extends Stamped>(table: string): Row[] => {
+    const rows = stmt(db, `SELECT * FROM ${table} WHERE seq > ? ORDER BY seq LIMIT ?`).all(
+      since,
+      PAGE,
+    ) as unknown as Row[]
     // Ordered by seq, so the last row is this table's high-water mark.
-    if (page.length === PAGE) cap = Math.min(cap, page[page.length - 1]!.seq)
-    return page
+    if (rows.length === PAGE) cap = Math.min(cap, rows.at(-1)!.seq)
+    return rows
   }
 
-  const decks = rows<Record<string, unknown>>(
-    'SELECT * FROM decks WHERE seq > ? ORDER BY seq LIMIT ?',
-  ).map(
-    (r): Deck => ({
-      id: r.id as string,
-      name: r.name as string,
-      mode: r.mode as Deck['mode'],
-      fields: JSON.parse(r.fields as string),
-      cuePreference: r.cuePreference as Deck['cuePreference'],
-      order: r.order as number,
-      updatedAt: r.updatedAt as number,
-      deletedAt: (r.deletedAt as number | null) ?? null,
-      seq: r.seq as number,
-    }),
-  )
-
-  const cards = rows<Record<string, unknown>>(
-    'SELECT * FROM cards WHERE seq > ? ORDER BY seq LIMIT ?',
-  ).map(
-    (r): Card => ({
-      id: r.id as string,
-      deckId: r.deckId as string,
-      sides: JSON.parse(r.sides as string),
-      updatedAt: r.updatedAt as number,
-      deletedAt: (r.deletedAt as number | null) ?? null,
-      seq: r.seq as number,
-    }),
-  )
-
-  const reviews = rows<Record<string, unknown>>(
-    'SELECT * FROM reviews WHERE seq > ? ORDER BY seq LIMIT ?',
-  ).map(
-    (r): Review => ({
-      id: r.id as string,
-      sideId: r.sideId as string,
-      cardId: r.cardId as string,
-      deckId: r.deckId as string,
-      cueSideId: (r.cueSideId as string | null) ?? null,
-      rating: r.rating as Review['rating'],
-      reviewedAt: r.reviewedAt as number,
-      memoryBefore: r.memoryBefore ? JSON.parse(r.memoryBefore as string) : null,
-      memoryAfter: JSON.parse(r.memoryAfter as string),
-      paramsHash: r.paramsHash as string,
-    }),
-  )
-
-  const paramSets = rows<Record<string, unknown>>(
-    'SELECT * FROM paramSets WHERE seq > ? ORDER BY seq LIMIT ?',
-  ).map(
-    (r): ParamSet => ({
-      hash: r.hash as string,
-      w: JSON.parse(r.w as string),
-      requestRetention: r.requestRetention as number,
-      learningSteps: JSON.parse(r.learningSteps as string),
-      createdAt: r.createdAt as number,
-    }),
-  )
-
-  const blobs = rows<Record<string, unknown>>(
-    'SELECT * FROM blobs WHERE seq > ? ORDER BY seq LIMIT ?',
-  ).map((r) => ({
-    sha256: r.sha256 as string,
-    mime: r.mime as string,
-    bytes: r.bytes as number,
-    width: r.width as number,
-    height: r.height as number,
-    createdAt: r.createdAt as number,
-  }))
+  const decks = page<DeckRow>('decks').map(toDeck)
+  const cards = page<CardRow>('cards').map(toCard)
+  const reviews = page<ReviewRow>('reviews').map(toReview)
+  const paramSets = page<ParamSetRow>('paramSets').map(toParamSet)
+  const blobs = page<BlobRow>('blobs').map(toBlobMeta)
 
   // A full page from any table means there is more behind it, so the client
   // resumes from what it was actually given rather than from the server's
@@ -123,28 +175,30 @@ export function pull(db: DatabaseSync, since: number): PullResponse {
   return { seq, decks, cards, reviews, paramSets, blobs }
 }
 
+// -------------------------------------------------------------------- push
+
 export function push(db: DatabaseSync, changes: Partial<ChangeSet>): number {
-  db.exec('BEGIN')
-  try {
+  transaction(db, () => {
     for (const deck of changes.decks ?? []) upsertDeck(db, deck)
     for (const card of changes.cards ?? []) upsertCard(db, card)
     for (const review of changes.reviews ?? []) insertReview(db, review)
     for (const set of changes.paramSets ?? []) insertParamSet(db, set)
-    db.exec('COMMIT')
-  } catch (err) {
-    db.exec('ROLLBACK')
-    throw err
-  }
+  })
   return currentSeq(db)
 }
 
-/** Last write wins: an incoming row older than the stored one is dropped. */
-function upsertDeck(db: DatabaseSync, deck: Deck) {
-  const existing = db.prepare('SELECT updatedAt FROM decks WHERE id = ?').get(deck.id) as
+/** Last write wins: is the stored copy of this row newer than the incoming one? */
+function storedIsNewer(db: DatabaseSync, table: 'decks' | 'cards', id: string, updatedAt: number) {
+  const existing = stmt(db, `SELECT updatedAt FROM ${table} WHERE id = ?`).get(id) as
     | { updatedAt: number }
     | undefined
-  if (existing && existing.updatedAt > deck.updatedAt) return
-  db.prepare(
+  return existing !== undefined && existing.updatedAt > updatedAt
+}
+
+function upsertDeck(db: DatabaseSync, deck: Deck) {
+  if (storedIsNewer(db, 'decks', deck.id, deck.updatedAt)) return
+  stmt(
+    db,
     `INSERT INTO decks (id, name, mode, fields, cuePreference, "order", updatedAt, deletedAt, seq)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
@@ -165,29 +219,21 @@ function upsertDeck(db: DatabaseSync, deck: Deck) {
 }
 
 function upsertCard(db: DatabaseSync, card: Card) {
-  const existing = db.prepare('SELECT updatedAt FROM cards WHERE id = ?').get(card.id) as
-    | { updatedAt: number }
-    | undefined
-  if (existing && existing.updatedAt > card.updatedAt) return
-  db.prepare(
+  if (storedIsNewer(db, 'cards', card.id, card.updatedAt)) return
+  stmt(
+    db,
     `INSERT INTO cards (id, deckId, sides, updatedAt, deletedAt, seq)
      VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        deckId = excluded.deckId, sides = excluded.sides,
        updatedAt = excluded.updatedAt, deletedAt = excluded.deletedAt, seq = excluded.seq`,
-  ).run(
-    card.id,
-    card.deckId,
-    JSON.stringify(card.sides),
-    card.updatedAt,
-    card.deletedAt,
-    nextSeq(db),
-  )
+  ).run(card.id, card.deckId, JSON.stringify(card.sides), card.updatedAt, card.deletedAt, nextSeq(db))
 }
 
 /** Immutable: re-sending a review is a no-op, which makes push idempotent. */
 function insertReview(db: DatabaseSync, review: Review) {
-  db.prepare(
+  stmt(
+    db,
     `INSERT INTO reviews
        (id, sideId, cardId, deckId, cueSideId, rating, reviewedAt, memoryBefore, memoryAfter, paramsHash, seq)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -207,8 +253,10 @@ function insertReview(db: DatabaseSync, review: Review) {
   )
 }
 
+/** Immutable and keyed by content hash: the first write wins. */
 function insertParamSet(db: DatabaseSync, set: ParamSet) {
-  db.prepare(
+  stmt(
+    db,
     `INSERT INTO paramSets (hash, w, requestRetention, learningSteps, createdAt, seq)
      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(hash) DO NOTHING`,
   ).run(
@@ -216,8 +264,10 @@ function insertParamSet(db: DatabaseSync, set: ParamSet) {
     JSON.stringify(set.w),
     set.requestRetention,
     // A client that predates the field sends nothing for it; it ran on the
-    // FSRS defaults, so that is what gets recorded.
-    JSON.stringify(set.learningSteps ?? ['1m', '10m']),
+    // FSRS defaults, so that is what gets recorded. Spelled out rather than
+    // imported: the server takes only types from `@eidet/shared`, never the
+    // scheduler behind them.
+    JSON.stringify((set.learningSteps as string[] | undefined) ?? ['1m', '10m']),
     set.createdAt,
     nextSeq(db),
   )
