@@ -1,5 +1,5 @@
 # eidet — see DESIGN.md for what any of this means.
-.PHONY: dev web server build test e2e typecheck deploy clean
+.PHONY: dev web server build test bench e2e typecheck deploy clean
 
 # Ports: 5175 web, 8083 server, 8091 deployed (tailnet :8445), 8087 Playwright.
 # 5173/5174/5176/5199/5273, 8080-8082/8090/8096/8173, Postgres 5432/5434/5435 and
@@ -21,6 +21,9 @@ build:                     ## production bundle + service worker
 
 test:                      ## unit tests across every package
 	pnpm -r --if-present test
+
+bench:                     ## micro-benchmarks for the model and the sync protocol
+	pnpm -r --if-present bench
 
 e2e: build                 ## offline/PWA suite against a real production build
 	cd web && pnpm e2e
