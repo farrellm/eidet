@@ -6,9 +6,10 @@ import {
   paramSet,
   paramsHash,
   replay,
+  resetReview,
   retrievability,
 } from '../src/schedule.ts'
-import { Grade, type Memory, type Review } from '../src/types.ts'
+import { Grade, type Memory, Rating, type Review } from '../src/types.ts'
 import { DAY, T0 } from './factory.ts'
 
 const IDS = { sideId: 's1', cardId: 'c1', deckId: 'd1' }
@@ -154,6 +155,29 @@ describe('replay', () => {
     const m = replay(IDS, [], PARAMS)
     expect(m.reps).toBe(0)
     expect(m.lastReview).toBeNull()
+  })
+})
+
+describe('reset', () => {
+  const graded = (memory: Memory, now: number, rating: Grade) =>
+    grade({ reviewId: `r${now}`, memory, rating, cueSideId: 'c', now, params: PARAMS, fuzz: false })
+
+  it('is a review carrying a fresh memory, with the one it replaced', () => {
+    const before = graded(newMemory(IDS, T0), T0, Grade.Good).memory
+    const { memory, review } = resetReview({ reviewId: 'rx', memory: before, now: T0 + DAY, params: PARAMS })
+    expect(memory).toEqual(newMemory(IDS, T0 + DAY))
+    expect(review.rating).toBe(Rating.Reset)
+    expect(review.cueSideId).toBeNull()
+    expect(review.memoryBefore).toEqual(before)
+    expect(review.memoryAfter).toEqual(memory)
+  })
+
+  it('survives a replay: the fold starts over at the reset', () => {
+    const a = graded(newMemory(IDS, T0), T0, Grade.Easy)
+    const reset = resetReview({ reviewId: 'rx', memory: a.memory, now: T0 + DAY, params: PARAMS })
+    const b = graded(reset.memory, T0 + 2 * DAY, Grade.Good)
+    const replayed = replay(IDS, [a.review, reset.review, b.review], PARAMS)
+    expect(replayed).toEqual(b.memory)
   })
 })
 

@@ -4,18 +4,9 @@
  * Pure functions over plain data — no clock, no database, no React. Screens
  * never do date maths; they call in here.
  */
-import { retrievability, scheduler } from './schedule.ts'
-import {
-  type Card,
-  type CardBatch,
-  type Deck,
-  type DeckId,
-  type Memory,
-  type Side,
-  type SideId,
-  sideFilled,
-  sideTested,
-} from './types.ts'
+import { defaultScheduler, retrievability } from './schedule.ts'
+import { sideFilled, sideTested } from './sides.ts'
+import type { Card, CardBatch, Deck, DeckId, Memory, Side, SideId } from './types.ts'
 
 export interface QueueInput {
   decks: Deck[]
@@ -61,7 +52,7 @@ export function selectCue(
   targets: Side[],
   memories: Map<SideId, Memory>,
   now: number,
-  fsrsInstance = scheduler(),
+  fsrsInstance = defaultScheduler(),
 ): { cue: Side; targets: Side[] } | null {
   const targetIds = new Set(targets.map((s) => s.id))
   const score = (s: Side) => {
@@ -98,7 +89,7 @@ export function buildBatch(
   card: Card,
   memories: Map<SideId, Memory>,
   now: number,
-  fsrsInstance = scheduler(),
+  fsrsInstance = defaultScheduler(),
 ): CardBatch | null {
   const { all, tested } = reviewableSides(deck, card)
   if (all.length < 2 || tested.length === 0) return null
@@ -144,38 +135,37 @@ export function interleave(
   memories: Map<SideId, Memory>,
   now: number,
 ): CardBatch[] {
+  // Scored once up front: the sort and the pick loop both consult it.
+  const score = new Map(batches.map((b) => [b, urgency(b, memories, now)]))
   const byDeck = new Map<DeckId, CardBatch[]>()
   for (const b of batches) {
     const list = byDeck.get(b.deckId)
     if (list) list.push(b)
     else byDeck.set(b.deckId, [b])
   }
-  for (const list of byDeck.values()) {
-    list.sort((a, b) => urgency(b, memories, now) - urgency(a, memories, now))
-  }
+  for (const list of byDeck.values()) list.sort((a, b) => score.get(b)! - score.get(a)!)
 
   const out: CardBatch[] = []
   let previous: DeckId | null = null
   while (out.length < batches.length) {
-    let pick: DeckId | null = null
+    // The most urgent head among the other decks; the previous deck only when
+    // nothing else is left.
+    let pick: CardBatch[] | undefined
     let best = -1
     for (const [deckId, list] of byDeck) {
       const head = list[0]
-      if (head === undefined) continue
-      if (deckId === previous && byDeck.size > 1) {
-        // Only fall back to the previous deck if nothing else is left.
-        const others = [...byDeck].some(([d, l]) => d !== deckId && l.length > 0)
-        if (others) continue
-      }
-      const u = urgency(head, memories, now)
+      if (head === undefined || deckId === previous) continue
+      const u = score.get(head)!
       if (u > best) {
         best = u
-        pick = deckId
+        pick = list
       }
     }
-    if (pick === null) break
-    out.push(byDeck.get(pick)!.shift()!)
-    previous = pick
+    pick ??= previous === null ? undefined : byDeck.get(previous)
+    const next: CardBatch | undefined = pick?.shift()
+    if (next === undefined) break
+    out.push(next)
+    previous = next.deckId
   }
   return out
 }
@@ -191,7 +181,7 @@ export function buildQueue(input: QueueInput): CardBatch[] {
   const { decks, cards, memories, now, deckIds, maxBatches } = input
   const scope = deckIds && deckIds.length > 0 ? new Set(deckIds) : null
   const deckById = new Map(decks.filter((d) => d.deletedAt === null).map((d) => [d.id, d]))
-  const fsrsInstance = scheduler()
+  const fsrsInstance = defaultScheduler()
 
   const batches: CardBatch[] = []
   for (const card of cards) {

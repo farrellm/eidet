@@ -28,7 +28,7 @@ export const MemoryState = {
   Relearning: 3,
 } as const satisfies Record<string, MemoryState>
 
-/** FSRS grades, mirroring `Rating` in ts-fsrs. `Manual` (0) is not used here. */
+/** FSRS grades, mirroring `Rating` in ts-fsrs — what a grade press can record. */
 export type Grade = 1 | 2 | 3 | 4
 export const Grade = {
   Again: 1,
@@ -36,6 +36,14 @@ export const Grade = {
   Good: 3,
   Easy: 4,
 } as const satisfies Record<string, Grade>
+
+/**
+ * What a review row records: a grade, or `Reset` (0, `Manual` in ts-fsrs) for
+ * an explicit "start this side over". A reset is a review like any other so
+ * that it syncs and survives a replay — see `resetReview` in `schedule.ts`.
+ */
+export type Rating = Grade | 0
+export const Rating = { ...Grade, Reset: 0 } as const satisfies Record<string, Rating>
 
 // ---------------------------------------------------------------- decks
 
@@ -79,8 +87,8 @@ export interface Deck {
 /**
  * One face of a card. In a `schema` deck `fieldId` points at the deck field and
  * `label`/`tested` are read from it; in a `freeform` deck `fieldId` is null and
- * the side carries its own. Use `sideLabel`/`sideTested` rather than reading
- * either pair directly.
+ * the side carries its own. Use `sideLabel`/`sideTested` (`sides.ts`) rather
+ * than reading either pair directly.
  */
 export interface Side {
   id: SideId
@@ -139,7 +147,7 @@ export interface Review {
   deckId: DeckId
   /** Which side prompted this recall; null for a schedule reset. */
   cueSideId: SideId | null
-  rating: Grade
+  rating: Rating
   reviewedAt: number
   memoryBefore: Memory | null
   memoryAfter: Memory
@@ -232,23 +240,4 @@ export interface PullResponse extends ChangeSet {
 
 export interface PushResponse {
   seq: number
-}
-
-// ---------------------------------------------------------------- resolvers
-
-/** The display label for a side, resolved against its deck. */
-export function sideLabel(deck: Deck, side: Side): string {
-  if (deck.mode === 'freeform') return side.label ?? ''
-  return deck.fields.find((f) => f.id === side.fieldId)?.name ?? ''
-}
-
-/** Whether a side is scheduled and graded, resolved against its deck. */
-export function sideTested(deck: Deck, side: Side): boolean {
-  if (deck.mode === 'freeform') return side.tested ?? false
-  return deck.fields.find((f) => f.id === side.fieldId)?.tested ?? false
-}
-
-/** A side with no content holds no schedule and is never shown. */
-export function sideFilled(side: Side): boolean {
-  return side.value.trim().length > 0
 }
