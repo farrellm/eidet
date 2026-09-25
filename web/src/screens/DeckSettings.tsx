@@ -3,7 +3,8 @@
  *
  * A schema deck declares its fields once and every card gets one slot per
  * field; a freeform deck lets each card carry its own. The mode is picked here,
- * at creation, because it decides the shape of every editor afterwards.
+ * at creation, and cannot be changed afterwards: it decides the shape of every
+ * card's sides, and switching would leave them all unlabelled and untested.
  */
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
@@ -53,12 +54,11 @@ export function DeckSettings() {
         : 'auto'
     const payload = {
       name: name.trim() || 'Untitled deck',
-      mode,
       fields: mode === 'schema' ? trimmed : [],
       cuePreference: pinned as Deck['cuePreference'],
     }
     if (isNew) {
-      const id = await createDeck(payload)
+      const id = await createDeck({ ...payload, mode })
       navigate(`/deck/${id}`)
     } else {
       await updateDeck(deckId!, payload)
@@ -92,6 +92,7 @@ export function DeckSettings() {
           />
         </section>
 
+        {isNew ? (
         <section className="field">
           <span className="label">Card shape</span>
           <div className="choices">
@@ -109,6 +110,7 @@ export function DeckSettings() {
             />
           </div>
         </section>
+        ) : null}
 
         {mode === 'schema' ? (
           <section className="field">
