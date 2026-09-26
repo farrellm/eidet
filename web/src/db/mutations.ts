@@ -190,7 +190,9 @@ export async function reconcileMemories(deck: Deck | undefined, card: Card, now:
   if (stale.length > 0) await db.memories.bulkDelete(stale)
   for (const sideId of shouldSchedule) {
     if (have.has(sideId)) continue
-    await db.memories.put(await restoredMemory({ sideId, cardId: card.id, deckId: card.deckId }, now))
+    await db.memories.put(
+      await restoredMemory({ sideId, cardId: card.id, deckId: card.deckId }, now),
+    )
   }
 }
 
@@ -366,9 +368,7 @@ export async function replayAll(params: ParamSet) {
   const rebuilt: Memory[] = []
   for (const m of memories) {
     const reviews = await db.reviews.where('sideId').equals(m.sideId).toArray()
-    rebuilt.push(
-      replay({ sideId: m.sideId, cardId: m.cardId, deckId: m.deckId }, reviews, params),
-    )
+    rebuilt.push(replay({ sideId: m.sideId, cardId: m.cardId, deckId: m.deckId }, reviews, params))
   }
   await db.memories.bulkPut(rebuilt)
 }

@@ -21,14 +21,7 @@ import {
   sideTested,
 } from '@eidet/shared'
 import { db } from '../db/db.ts'
-import {
-  blankCard,
-  blankSide,
-  deleteCard,
-  newId,
-  resetSide,
-  saveCard,
-} from '../db/mutations.ts'
+import { blankCard, blankSide, deleteCard, newId, resetSide, saveCard } from '../db/mutations.ts'
 import { countOf, formatWhen } from '../ui/format.ts'
 import { Ramp, memoryRamp } from '../ui/Ramp.tsx'
 import { ImageSideInput } from '../ui/ImageSideInput.tsx'
@@ -262,9 +255,7 @@ function SideEditor({
                   everywhere else, not a spelled-out R. */}
               <Ramp step={memoryRamp(memory, now)} />
               <span className="num">due {formatWhen(memory.due, now)}</span>
-              <span className="num">
-                {countOf(memory.reps, 'review')}
-              </span>
+              <span className="num">{countOf(memory.reps, 'review')}</span>
               {memory.reps > 0 ? (
                 <button className="link" onClick={() => resetSide(side.id)}>
                   Reset schedule

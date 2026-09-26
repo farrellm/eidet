@@ -36,7 +36,10 @@ export function Today() {
   const byDeck = groupBy(memories, (m) => m.deckId)
   const nextDue = memories
     .filter((m) => m.due > now)
-    .reduce<number | null>((soonest, m) => (soonest === null || m.due < soonest ? m.due : soonest), null)
+    .reduce<number | null>(
+      (soonest, m) => (soonest === null || m.due < soonest ? m.due : soonest),
+      null,
+    )
 
   const start = async () => {
     const session = await startSession()

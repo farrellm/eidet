@@ -39,15 +39,35 @@ const BIRDS: [string, string][] = [
 
 /** Four sides, one of them untested — context that is shown but never graded. */
 const ANATOMY: [string, string, string, string][] = [
-  ['Biceps brachii', 'Flexes the elbow, supinates the forearm', 'Musculocutaneous', 'Two heads, hence the name'],
+  [
+    'Biceps brachii',
+    'Flexes the elbow, supinates the forearm',
+    'Musculocutaneous',
+    'Two heads, hence the name',
+  ],
   ['Brachialis', 'Flexes the elbow', 'Musculocutaneous', 'The workhorse under the biceps'],
   ['Triceps brachii', 'Extends the elbow', 'Radial', 'Long head crosses the shoulder too'],
-  ['Deltoid', 'Abducts the arm past fifteen degrees', 'Axillary', 'Supraspinatus starts the movement'],
-  ['Supraspinatus', 'Starts abduction of the arm', 'Suprascapular', 'First of the rotator cuff to tear'],
+  [
+    'Deltoid',
+    'Abducts the arm past fifteen degrees',
+    'Axillary',
+    'Supraspinatus starts the movement',
+  ],
+  [
+    'Supraspinatus',
+    'Starts abduction of the arm',
+    'Suprascapular',
+    'First of the rotator cuff to tear',
+  ],
   ['Infraspinatus', 'Rotates the arm laterally', 'Suprascapular', ''],
   ['Teres minor', 'Rotates the arm laterally', 'Axillary', 'The only cuff muscle on the axillary'],
   ['Subscapularis', 'Rotates the arm medially', 'Upper and lower subscapular', ''],
-  ['Serratus anterior', 'Protracts and rotates the scapula', 'Long thoracic', 'Winged scapula when it fails'],
+  [
+    'Serratus anterior',
+    'Protracts and rotates the scapula',
+    'Long thoracic',
+    'Winged scapula when it fails',
+  ],
   ['Latissimus dorsi', 'Extends, adducts and medially rotates the arm', 'Thoracodorsal', ''],
   ['Pronator teres', 'Pronates the forearm', 'Median', ''],
   ['Supinator', 'Supinates the forearm', 'Radial', 'Deep branch pierces it'],
@@ -63,7 +83,12 @@ async function deckWith(
   const id = await createDeck({
     name,
     mode: 'schema',
-    fields: fields.map((f, i) => ({ id: `${name}-f${i}`, name: f.name, kind: 'text', tested: f.tested })),
+    fields: fields.map((f, i) => ({
+      id: `${name}-f${i}`,
+      name: f.name,
+      kind: 'text',
+      tested: f.tested,
+    })),
   })
   const deck = (await db.decks.get(id)) as Deck
   for (const row of rows) {
@@ -96,8 +121,15 @@ async function backdate() {
     let memory = m
     let at = Date.now() - 90 * DAY
     for (let r = 0; r < sessions; r++) {
-      const rating = (strong ? (r === 0 ? 3 : 3 + (i % 2)) : ((r % 2) + 1)) as Grade
-      const next = grade({ reviewId: crypto.randomUUID(), memory, rating, cueSideId: null, now: at, params })
+      const rating = (strong ? (r === 0 ? 3 : 3 + (i % 2)) : (r % 2) + 1) as Grade
+      const next = grade({
+        reviewId: crypto.randomUUID(),
+        memory,
+        rating,
+        cueSideId: null,
+        now: at,
+        params,
+      })
       await db.reviews.put(next.review)
       memory = next.memory
       at = Math.min(memory.due, Date.now() - DAY)

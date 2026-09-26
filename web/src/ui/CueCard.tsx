@@ -75,11 +75,7 @@ export function CueCard({
         </span>
         <span className="label cuecard__label">{sideLabel(deck, cue)}</span>
       </div>
-      {docked ? null : (
-        <p className="fold">
-          {countOf(hidden, 'side')} hidden
-        </p>
-      )}
+      {docked ? null : <p className="fold">{countOf(hidden, 'side')} hidden</p>}
     </div>
   )
 }

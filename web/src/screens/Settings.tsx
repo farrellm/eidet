@@ -78,11 +78,13 @@ export function Settings() {
               : lastSyncedAt
                 ? `Last synced ${formatWhen(lastSyncedAt, now)}.`
                 : 'Syncing.'}
-            {counts.unsent > 0
-              ? ` ${countOf(counts.unsent, 'change')} still to send.`
-              : ''}
+            {counts.unsent > 0 ? ` ${countOf(counts.unsent, 'change')} still to send.` : ''}
           </p>
-          <button className="action action--quiet" onClick={syncNow} disabled={status === 'syncing'}>
+          <button
+            className="action action--quiet"
+            onClick={syncNow}
+            disabled={status === 'syncing'}
+          >
             {status === 'syncing' ? 'Syncing' : 'Sync now'}
           </button>
         </section>
@@ -90,8 +92,8 @@ export function Settings() {
         <section>
           <h2 className="settings__head">Target recall</h2>
           <p className="rest rest--tight">
-            How well you want to remember a side when it comes back up. Aiming higher means
-            seeing everything more often.
+            How well you want to remember a side when it comes back up. Aiming higher means seeing
+            everything more often.
           </p>
           <div className="choices choices--row">
             {RETENTIONS.map((r) => (

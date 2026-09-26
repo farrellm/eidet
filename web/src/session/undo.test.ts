@@ -190,8 +190,8 @@ describe('undo against a push in flight', () => {
 
   it('takes the review back before the push can collect it', async () => {
     const graded = await commit(session(), 3, T0 + 1000)
-    const fetched = vi.fn(async (_input: string, _init?: RequestInit) =>
-      new Response('{}', { status: 200 }),
+    const fetched = vi.fn(
+      async (_input: string, _init?: RequestInit) => new Response('{}', { status: 200 }),
     )
     vi.stubGlobal('fetch', fetched)
 
@@ -209,4 +209,3 @@ describe('undo against a push in flight', () => {
     expect(body.reviews).toEqual([])
   })
 })
-

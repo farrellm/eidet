@@ -83,10 +83,7 @@ export async function reveal(session: ReviewSession): Promise<ReviewSession> {
  * not asked about records an `Again` for it, which is how "must remember all
  * other sides" stays honest without forcing a grade on everything (§1 step 5).
  */
-export async function toggleMissed(
-  session: ReviewSession,
-  sideId: SideId,
-): Promise<ReviewSession> {
+export async function toggleMissed(session: ReviewSession, sideId: SideId): Promise<ReviewSession> {
   const missed = session.missedSideIds.includes(sideId)
     ? session.missedSideIds.filter((id) => id !== sideId)
     : [...session.missedSideIds, sideId]
@@ -163,10 +160,7 @@ export async function canUndo(session: ReviewSession): Promise<boolean> {
  * unwind the screen past a grade the log still holds, and the next press would
  * write a second review for the same side.
  */
-export async function undo(
-  session: ReviewSession,
-  now = Date.now(),
-): Promise<ReviewSession> {
+export async function undo(session: ReviewSession, now = Date.now()): Promise<ReviewSession> {
   const last = session.lastCommit
   if (!last || session.index === 0) return session
   if (!(await undoCommit(last.reviewIds, now))) return session
@@ -195,8 +189,6 @@ const ABANDONED_AFTER = 7 * 86_400_000
  */
 export async function pruneSessions(keep = 3, now = Date.now()) {
   const all = await db.sessions.orderBy('startedAt').reverse().toArray()
-  const stale = all
-    .slice(keep)
-    .filter((s) => isFinished(s) || s.startedAt < now - ABANDONED_AFTER)
+  const stale = all.slice(keep).filter((s) => isFinished(s) || s.startedAt < now - ABANDONED_AFTER)
   await db.sessions.bulkDelete(stale.map((s) => s.id))
 }

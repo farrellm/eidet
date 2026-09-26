@@ -194,8 +194,7 @@ export function push(db: DatabaseSync, changes: Partial<ChangeSet>): number {
 /** Last write wins: is the stored copy of this row newer than the incoming one? */
 function storedIsNewer(db: DatabaseSync, table: 'decks' | 'cards', id: string, updatedAt: number) {
   const existing = stmt(db, `SELECT updatedAt FROM ${table} WHERE id = ?`).get(id) as
-    | { updatedAt: number }
-    | undefined
+    { updatedAt: number } | undefined
   return existing !== undefined && existing.updatedAt > updatedAt
 }
 
@@ -231,7 +230,14 @@ function upsertCard(db: DatabaseSync, card: Card) {
      ON CONFLICT(id) DO UPDATE SET
        deckId = excluded.deckId, sides = excluded.sides,
        updatedAt = excluded.updatedAt, deletedAt = excluded.deletedAt, seq = excluded.seq`,
-  ).run(card.id, card.deckId, JSON.stringify(card.sides), card.updatedAt, card.deletedAt, nextSeq(db))
+  ).run(
+    card.id,
+    card.deckId,
+    JSON.stringify(card.sides),
+    card.updatedAt,
+    card.deletedAt,
+    nextSeq(db),
+  )
 }
 
 /** Immutable: re-sending a review is a no-op, which makes push idempotent. */

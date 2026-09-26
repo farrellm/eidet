@@ -68,8 +68,7 @@ export class BlobStore {
 
   async get(sha256: string): Promise<{ data: Buffer; mime: string } | null> {
     const row = stmt(this.db, 'SELECT mime FROM blobs WHERE sha256 = ?').get(sha256) as
-      | { mime: string }
-      | undefined
+      { mime: string } | undefined
     if (!row) return null
     try {
       return { data: await readFile(this.path(sha256)), mime: row.mime }

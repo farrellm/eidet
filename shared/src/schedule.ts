@@ -93,11 +93,7 @@ export function defaultScheduler(): FSRS {
  * A short, stable content hash of the weights in force, stored on each review so
  * the log records which parameters produced it.
  */
-export function paramsHash(
-  w: number[],
-  requestRetention: number,
-  learningSteps: string[],
-): string {
+export function paramsHash(w: number[], requestRetention: number, learningSteps: string[]): string {
   const text = `${requestRetention}|${learningSteps.join(',')}|${w.map((n) => n.toFixed(6)).join(',')}`
   // FNV-1a, 32-bit. Not cryptographic — this identifies a parameter set, and the
   // full weights live in `paramSets` keyed by this value.
@@ -184,11 +180,7 @@ function idsOf(m: Memory): SideIds {
  * Current probability of recall, 0–1. Drives cue selection (§1) and is the value
  * the whole interface visualises (§3) — the ramp is this number.
  */
-export function retrievability(
-  m: Memory,
-  now: number,
-  fsrsInstance = defaultScheduler(),
-): number {
+export function retrievability(m: Memory, now: number, fsrsInstance = defaultScheduler()): number {
   if (m.lastReview === null) return 0
   return fsrsInstance.get_retrievability(toFsrsCard(m), new Date(now), false)
 }
@@ -213,11 +205,7 @@ export function grade(args: {
   fuzz?: boolean
 }): GradeResult {
   const { reviewId, memory, rating, cueSideId, now, params, fuzz } = args
-  const { card } = schedulerFor(params, fuzz).next(
-    toFsrsCard(memory),
-    new Date(now),
-    rating,
-  )
+  const { card } = schedulerFor(params, fuzz).next(toFsrsCard(memory), new Date(now), rating)
   const after = fromFsrsCard(card, idsOf(memory))
   return {
     memory: after,

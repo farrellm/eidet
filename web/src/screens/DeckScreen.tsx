@@ -32,7 +32,12 @@ export function DeckScreen() {
 
   const deck = useLiveQuery(() => db.decks.get(deckId), [deckId])
   const cards = useLiveQuery(
-    () => db.cards.where('deckId').equals(deckId).filter((c) => c.deletedAt === null).toArray(),
+    () =>
+      db.cards
+        .where('deckId')
+        .equals(deckId)
+        .filter((c) => c.deletedAt === null)
+        .toArray(),
     [deckId],
   )
   const memories = useLiveQuery(
@@ -152,13 +157,11 @@ function CardRow({
           {first?.kind === 'image' ? '(image)' : (first?.value ?? '(empty)')}
         </span>
         <span className="card-row__ramps">
-          {filled.filter((s) => sideTested(deck, s)).map((s) => (
-            <Ramp
-              key={s.id}
-              step={memoryRamp(byId.get(s.id), now)}
-              label={sideLabel(deck, s)}
-            />
-          ))}
+          {filled
+            .filter((s) => sideTested(deck, s))
+            .map((s) => (
+              <Ramp key={s.id} step={memoryRamp(byId.get(s.id), now)} label={sideLabel(deck, s)} />
+            ))}
         </span>
       </button>
     </li>

@@ -21,10 +21,14 @@ export async function goOnline(page: Page) {
 
 /** Wait for the service worker to finish precaching before cutting the network. */
 export async function waitForPrecache(page: Page) {
-  await page.waitForFunction(async () => {
-    const reg = await navigator.serviceWorker.getRegistration()
-    return !!reg?.active
-  }, null, { timeout: 20_000 })
+  await page.waitForFunction(
+    async () => {
+      const reg = await navigator.serviceWorker.getRegistration()
+      return !!reg?.active
+    },
+    null,
+    { timeout: 20_000 },
+  )
   // Give Workbox a moment to finish writing the precache.
   await page.waitForTimeout(1500)
 }

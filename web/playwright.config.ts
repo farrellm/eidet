@@ -32,8 +32,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command:
-      'node --experimental-strip-types ../server/src/index.ts',
+    command: 'node --experimental-strip-types ../server/src/index.ts',
     url: 'http://127.0.0.1:8087/api/healthz',
     reuseExistingServer: false,
     env: {

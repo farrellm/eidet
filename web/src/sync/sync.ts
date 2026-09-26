@@ -206,7 +206,7 @@ export async function syncOnce(): Promise<{ pushed: number; pulled: number; blob
   // Page until caught up, so a cold device has the whole corpus after one
   // sync rather than one page per poll.
   let pulled = 0
-  for (let more = true; more; ) {
+  for (let more = true; more;) {
     const page = await pullChanges()
     pulled += page.rows
     more = page.more

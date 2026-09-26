@@ -18,8 +18,22 @@ const PARAMS = defaultParamSet(T0)
 describe('grading one side', () => {
   it('schedules further out for Easy than for Again', () => {
     const m = newMemory(IDS, T0)
-    const again = grade({ reviewId: 'r', memory: m, rating: Grade.Again, cueSideId: 'c', now: T0, params: PARAMS })
-    const easy = grade({ reviewId: 'r', memory: m, rating: Grade.Easy, cueSideId: 'c', now: T0, params: PARAMS })
+    const again = grade({
+      reviewId: 'r',
+      memory: m,
+      rating: Grade.Again,
+      cueSideId: 'c',
+      now: T0,
+      params: PARAMS,
+    })
+    const easy = grade({
+      reviewId: 'r',
+      memory: m,
+      rating: Grade.Easy,
+      cueSideId: 'c',
+      now: T0,
+      params: PARAMS,
+    })
     expect(easy.memory.due).toBeGreaterThan(again.memory.due)
     expect(easy.memory.stability).toBeGreaterThan(again.memory.stability)
   })
@@ -39,7 +53,14 @@ describe('grading one side', () => {
   })
 
   it('carries the resulting memory on the review, so state is an O(1) read', () => {
-    const r = grade({ reviewId: 'r1', memory: newMemory(IDS, T0), rating: Grade.Good, cueSideId: null, now: T0, params: PARAMS })
+    const r = grade({
+      reviewId: 'r1',
+      memory: newMemory(IDS, T0),
+      rating: Grade.Good,
+      cueSideId: null,
+      now: T0,
+      params: PARAMS,
+    })
     expect(r.review.memoryAfter).toEqual(r.memory)
     // A side's very first review has no prior state to record.
     expect(r.review.memoryBefore).toBeNull()
@@ -48,17 +69,45 @@ describe('grading one side', () => {
   it('counts a lapse when a learned side is forgotten', () => {
     let m = newMemory(IDS, T0)
     for (const [i, at] of [T0, T0 + DAY, T0 + 5 * DAY].entries()) {
-      m = grade({ reviewId: `r${i}`, memory: m, rating: Grade.Good, cueSideId: null, now: at, params: PARAMS }).memory
+      m = grade({
+        reviewId: `r${i}`,
+        memory: m,
+        rating: Grade.Good,
+        cueSideId: null,
+        now: at,
+        params: PARAMS,
+      }).memory
     }
     const before = m.lapses
-    const after = grade({ reviewId: 'rx', memory: m, rating: Grade.Again, cueSideId: null, now: T0 + 40 * DAY, params: PARAMS }).memory
+    const after = grade({
+      reviewId: 'rx',
+      memory: m,
+      rating: Grade.Again,
+      cueSideId: null,
+      now: T0 + 40 * DAY,
+      params: PARAMS,
+    }).memory
     expect(after.lapses).toBe(before + 1)
   })
 
   it('is pure — grading twice from the same state gives the same schedule', () => {
     const m = newMemory(IDS, T0)
-    const a = grade({ reviewId: 'r', memory: m, rating: Grade.Good, cueSideId: null, now: T0, params: PARAMS })
-    const b = grade({ reviewId: 'r', memory: m, rating: Grade.Good, cueSideId: null, now: T0, params: PARAMS })
+    const a = grade({
+      reviewId: 'r',
+      memory: m,
+      rating: Grade.Good,
+      cueSideId: null,
+      now: T0,
+      params: PARAMS,
+    })
+    const b = grade({
+      reviewId: 'r',
+      memory: m,
+      rating: Grade.Good,
+      cueSideId: null,
+      now: T0,
+      params: PARAMS,
+    })
     expect(a.memory).toEqual(b.memory)
     expect(m.reps).toBe(0) // the input was not mutated
   })
@@ -69,7 +118,12 @@ describe('grade fan-out across a reveal', () => {
    * The interaction from §1 step 5: one press applies to every unmissed row,
    * and rows the user tapped always take Again.
    */
-  function applyReveal(targets: Memory[], missed: Set<string>, pressed: 1 | 2 | 3 | 4, now: number) {
+  function applyReveal(
+    targets: Memory[],
+    missed: Set<string>,
+    pressed: 1 | 2 | 3 | 4,
+    now: number,
+  ) {
     return targets.map((m, i) =>
       grade({
         reviewId: `r${i}`,
@@ -85,7 +139,12 @@ describe('grade fan-out across a reveal', () => {
   it('writes Again for missed rows and the pressed grade for the rest', () => {
     const targets = ['a', 'b', 'c', 'd'].map((id) => newMemory({ ...IDS, sideId: id }, T0))
     const out = applyReveal(targets, new Set(['b', 'd']), Grade.Good, T0)
-    expect(out.map((r) => r.review.rating)).toEqual([Grade.Good, Grade.Again, Grade.Good, Grade.Again])
+    expect(out.map((r) => r.review.rating)).toEqual([
+      Grade.Good,
+      Grade.Again,
+      Grade.Good,
+      Grade.Again,
+    ])
   })
 
   it('gives every row Again when Again is pressed, missed or not', () => {
@@ -111,7 +170,15 @@ describe('replay', () => {
     let at = T0
     for (const [i, rating] of ratings.entries()) {
       at = Math.max(m.due, at + DAY)
-      const next = grade({ reviewId: `r${i}`, memory: m, rating, cueSideId: 'cue', now: at, params: PARAMS, fuzz: false })
+      const next = grade({
+        reviewId: `r${i}`,
+        memory: m,
+        rating,
+        cueSideId: 'cue',
+        now: at,
+        params: PARAMS,
+        fuzz: false,
+      })
       reviews.push(next.review)
       m = next.memory
     }
@@ -119,7 +186,14 @@ describe('replay', () => {
   }
 
   it('reproduces a fold over the log exactly when fuzz is off', () => {
-    const { reviews, memory } = history([Grade.Good, Grade.Again, Grade.Hard, Grade.Good, Grade.Easy, Grade.Good])
+    const { reviews, memory } = history([
+      Grade.Good,
+      Grade.Again,
+      Grade.Hard,
+      Grade.Good,
+      Grade.Easy,
+      Grade.Good,
+    ])
     expect(replay(IDS, reviews, PARAMS)).toEqual(memory)
   })
 
@@ -138,7 +212,15 @@ describe('replay', () => {
     let at = T0
     for (const [i, rating] of [Grade.Good, Grade.Good, Grade.Good, Grade.Good].entries()) {
       at = Math.max(m.due, at + DAY)
-      const next = grade({ reviewId: `r${i}`, memory: m, rating, cueSideId: null, now: at, params: PARAMS, fuzz: true })
+      const next = grade({
+        reviewId: `r${i}`,
+        memory: m,
+        rating,
+        cueSideId: null,
+        now: at,
+        params: PARAMS,
+        fuzz: true,
+      })
       reviews.push(next.review)
       m = next.memory
     }
@@ -164,7 +246,12 @@ describe('reset', () => {
 
   it('is a review carrying a fresh memory, with the one it replaced', () => {
     const before = graded(newMemory(IDS, T0), T0, Grade.Good).memory
-    const { memory, review } = resetReview({ reviewId: 'rx', memory: before, now: T0 + DAY, params: PARAMS })
+    const { memory, review } = resetReview({
+      reviewId: 'rx',
+      memory: before,
+      now: T0 + DAY,
+      params: PARAMS,
+    })
     expect(memory).toEqual(newMemory(IDS, T0 + DAY))
     expect(review.rating).toBe(Rating.Reset)
     expect(review.cueSideId).toBeNull()
@@ -205,7 +292,14 @@ describe('parameter identity', () => {
 
 describe('retrievability', () => {
   it('is 1 immediately after a review and decays from there', () => {
-    const m = grade({ reviewId: 'r', memory: newMemory(IDS, T0), rating: Grade.Good, cueSideId: null, now: T0, params: PARAMS }).memory
+    const m = grade({
+      reviewId: 'r',
+      memory: newMemory(IDS, T0),
+      rating: Grade.Good,
+      cueSideId: null,
+      now: T0,
+      params: PARAMS,
+    }).memory
     expect(retrievability(m, T0)).toBeCloseTo(1, 2)
     expect(retrievability(m, T0 + 365 * DAY)).toBeLessThan(0.5)
   })

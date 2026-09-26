@@ -93,23 +93,23 @@ export function DeckSettings() {
         </section>
 
         {isNew ? (
-        <section className="field">
-          <span className="label">Card shape</span>
-          <div className="choices">
-            <Choice
-              checked={mode === 'schema'}
-              onSelect={() => setMode('schema')}
-              title="Same fields on every card"
-              detail="Name the fields once. Every card gets a slot for each, and blank slots are skipped."
-            />
-            <Choice
-              checked={mode === 'freeform'}
-              onSelect={() => setMode('freeform')}
-              title="Different sides per card"
-              detail="Each card carries its own labelled sides. Nothing lines up, but anything goes."
-            />
-          </div>
-        </section>
+          <section className="field">
+            <span className="label">Card shape</span>
+            <div className="choices">
+              <Choice
+                checked={mode === 'schema'}
+                onSelect={() => setMode('schema')}
+                title="Same fields on every card"
+                detail="Name the fields once. Every card gets a slot for each, and blank slots are skipped."
+              />
+              <Choice
+                checked={mode === 'freeform'}
+                onSelect={() => setMode('freeform')}
+                title="Different sides per card"
+                detail="Each card carries its own labelled sides. Nothing lines up, but anything goes."
+              />
+            </div>
+          </section>
         ) : null}
 
         {mode === 'schema' ? (
@@ -127,7 +127,9 @@ export function DeckSettings() {
                   placeholder={`Field ${i + 1}`}
                   aria-label={`Field ${i + 1} name`}
                   onChange={(e) =>
-                    setFields(fields.map((x) => (x.id === f.id ? { ...x, name: e.target.value } : x)))
+                    setFields(
+                      fields.map((x) => (x.id === f.id ? { ...x, name: e.target.value } : x)),
+                    )
                   }
                 />
                 <label className="toggle">

@@ -8,7 +8,14 @@
  */
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
 import 'fake-indexeddb/auto'
-import { type Card, type Deck, type PullResponse, grade, newMemory, defaultParamSet } from '@eidet/shared'
+import {
+  type Card,
+  type Deck,
+  type PullResponse,
+  grade,
+  newMemory,
+  defaultParamSet,
+} from '@eidet/shared'
 import { db, enqueue } from '../db/db.ts'
 import { pullChanges, pushChanges, syncOnce } from './sync.ts'
 
@@ -141,7 +148,10 @@ describe('a push does not clear an edit made during the request', () => {
   it('clears a row that was left alone', async () => {
     await db.decks.put(deck())
     await enqueue('decks', 'd1', T0)
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { status: 200 })),
+    )
 
     expect(await pushChanges()).toBe(1)
     expect(await db.outbox.get('decks:d1')).toBeUndefined()
@@ -177,15 +187,31 @@ describe('a pull keeps memories in line with what arrived', () => {
     await db.cards.put(card())
     await db.memories.put(newMemory({ sideId: 's1', cardId: 'c1', deckId: 'd1' }, T0))
 
-    serverSays({ decks: [deck({ fields: [{ id: 'f1', name: 'glyph', kind: 'text', tested: false }] })] })
+    serverSays({
+      decks: [deck({ fields: [{ id: 'f1', name: 'glyph', kind: 'text', tested: false }] })],
+    })
     await pullChanges(T0)
     expect(await db.memories.get('s1')).toBeUndefined()
   })
 
   it("takes a reviewed side's memory from its newest review", async () => {
     const params = defaultParamSet(T0)
-    const first = grade({ reviewId: 'r1', memory: newMemory({ sideId: 's1', cardId: 'c1', deckId: 'd1' }, T0), rating: 3, cueSideId: null, now: T0, params })
-    const second = grade({ reviewId: 'r2', memory: first.memory, rating: 3, cueSideId: null, now: T0 + 60_000, params })
+    const first = grade({
+      reviewId: 'r1',
+      memory: newMemory({ sideId: 's1', cardId: 'c1', deckId: 'd1' }, T0),
+      rating: 3,
+      cueSideId: null,
+      now: T0,
+      params,
+    })
+    const second = grade({
+      reviewId: 'r2',
+      memory: first.memory,
+      rating: 3,
+      cueSideId: null,
+      now: T0 + 60_000,
+      params,
+    })
 
     serverSays({ decks: [tested], cards: [card()], reviews: [second.review, first.review] })
     await pullChanges(T0)
@@ -201,7 +227,16 @@ describe('a sync pages until it has caught up', () => {
     ]
     const fetched = vi.fn(async (input: string) => {
       if (input.startsWith('/api/healthz')) return new Response('{}', { status: 200 })
-      const body = { seq: 0, more: false, decks: [], cards: [], reviews: [], paramSets: [], blobs: [], ...pages.shift() }
+      const body = {
+        seq: 0,
+        more: false,
+        decks: [],
+        cards: [],
+        reviews: [],
+        paramSets: [],
+        blobs: [],
+        ...pages.shift(),
+      }
       return new Response(JSON.stringify(body), { status: 200 })
     })
     vi.stubGlobal('fetch', fetched)

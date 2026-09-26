@@ -48,7 +48,11 @@ describe('the api', () => {
   it('round-trips a push and a pull', async () => {
     const push = await fetch(`${base}/api/changes`, {
       method: 'POST',
-      body: JSON.stringify({ paramSets: [{ hash: 'h', w: [1], requestRetention: 0.9, learningSteps: ['1m'], createdAt: 1 }] }),
+      body: JSON.stringify({
+        paramSets: [
+          { hash: 'h', w: [1], requestRetention: 0.9, learningSteps: ['1m'], createdAt: 1 },
+        ],
+      }),
     })
     expect(push.status).toBe(200)
     const pulled = (await (await fetch(`${base}/api/changes?since=0`)).json()) as PullResponse

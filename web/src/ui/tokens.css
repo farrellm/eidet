@@ -38,8 +38,9 @@
   --sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
   /* Literata has no CJK coverage; without an explicit fallback a kanji deck
      drops to whatever the platform picks, which is rarely a serif. */
-  --serif: 'Literata Variable', Georgia, 'Hiragino Mincho ProN', 'Yu Mincho',
-    'Noto Serif CJK JP', 'Songti SC', 'Times New Roman', serif;
+  --serif:
+    'Literata Variable', Georgia, 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif CJK JP',
+    'Songti SC', 'Times New Roman', serif;
 
   --t-cue: 2.99rem;
   --t-content: 1.25rem;

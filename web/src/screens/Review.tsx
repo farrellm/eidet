@@ -241,9 +241,7 @@ function Done({ session, onLeave }: { session: ReviewSession; onLeave: () => voi
         <span className="strip__spacer" />
       </div>
       <div className="state">
-        <p className="content">
-          {countOf(session.gradedCount, 'side')} reviewed.
-        </p>
+        <p className="content">{countOf(session.gradedCount, 'side')} reviewed.</p>
         <p className="label">Saved on this phone.</p>
       </div>
       <div className="dock">
