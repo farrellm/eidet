@@ -2,7 +2,8 @@
 
 Spaced repetition for cards with **any number of sides**, used on an iPhone over
 Tailscale, fully functional offline. TypeScript throughout: React/Vite PWA +
-Node `node:sqlite` server, pnpm workspace of three packages.
+Node `node:sqlite` server, plus an MCP server for editing decks and cards; pnpm
+workspace of four packages.
 **DESIGN.md is the authoritative design doc** — code comments cite its sections
 (§1 review loop, §2 FSRS, §3 visual system, §5 data model, §6 offline & sync);
 keep those references valid when editing.
@@ -16,6 +17,7 @@ make lint         # eslint + prettier --check (make format rewrites)
 make bench        # vitest bench: queue, retrievability, push/pull
 make e2e          # offline/PWA suite (builds first; needs a prod build)
 make build        # vite build -> web/dist, incl. service worker
+make mcp          # MCP server on stdio (EIDET_URL, default the deployed :8091)
 ```
 
 - **Ports: web 5175, server 8083, deployed 8091, Playwright 8087; tailnet 8445.**
@@ -51,6 +53,12 @@ apart. If a change makes sense for "a card's schedule", it is probably wrong.
   from `@eidet/shared`. `changes.ts` is the whole protocol; `app.ts` is the
   HTTP handler (tested in `test/app.test.ts`); `db.ts` owns the numbered
   migration list, the `seq` counter and the prepared-statement cache (`stmt`).
+- `mcp/src/` — the MCP server (§6), **a sync client and nothing more**: it
+  pulls and pushes over `/api/changes` and `/api/blobs`, never opens SQLite,
+  and writes only decks, cards and blobs — memories appear on each phone's
+  pull via `reconcileMemories`. Its writes mirror `mutations.ts` and the deck
+  settings screen; change one, check the other. Every write goes through
+  `stamp()`, or the server's LWW drops it silently behind a fast-clocked row.
 - `web/src/db/` — Dexie is the device's source of truth (not a response cache);
   `mutations.ts` holds every write. `web/src/sync/` reconciles with the server.
   `web/src/session/` owns the review session record.

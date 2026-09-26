@@ -18,6 +18,17 @@ make check        # typecheck + unit tests
 make e2e          # offline/PWA suite against a production build
 ```
 
+## From Claude
+
+`mcp/` is an MCP server for creating and editing decks and cards (images from a
+local file path included). It syncs with the eidet server over HTTP like any
+other device — the deployed instance on `:8091` unless `EIDET_URL` says
+otherwise:
+
+```bash
+claude mcp add eidet -- node --experimental-strip-types $PWD/mcp/src/index.ts
+```
+
 ## On the phone
 
 Two things are not optional:

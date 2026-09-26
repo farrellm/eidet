@@ -414,6 +414,20 @@ The server stamps a monotonic `seq` on every row it writes; the client's cursor 
 
 LWW is honest here because there is one user with one primary device. The accepted caveat: editing the same card on two devices while both are offline loses one edit. Reviews never lose.
 
+### The MCP server is one more client
+
+`mcp/` lets an MCP client (Claude) create and edit decks and cards. It speaks
+this same protocol over HTTP and nothing else — it never opens SQLite, and it
+writes only decks, cards and blobs, never reviews or memories. A card it pushes
+is scheduled the way a card from any other device is: each phone gives its
+filled, tested sides a memory when it pulls the row (`reconcileMemories`), so
+the server still never schedules. It keeps an in-memory mirror of decks and
+cards, caught up incrementally before every tool call, and stamps each write
+`max(now, stored updatedAt + 1)` so an edit cannot lose last-write-wins to a
+row from a phone whose clock runs fast. Images come from a local path and are
+uploaded as-is — the phone's webp downscale needs a canvas — before the card
+that names them, so no device pulls a dangling reference.
+
 ### Reload returns to exactly the same state
 
 A `session` record in IndexedDB, written on **every** state transition:
@@ -443,7 +457,7 @@ This is the requirement most likely to rot silently — it gets a dedicated Play
 
 ## 7. Repo layout
 
-pnpm workspace (pnpm 11 installed; matches `jelly-sim`), three packages, one language throughout.
+pnpm workspace (pnpm 11 installed; matches `jelly-sim`), four packages, one language throughout.
 
 ```
 eidet/
@@ -465,6 +479,10 @@ eidet/
 │   ├── db.ts              node:sqlite, schema + migrations, seq, statement cache
 │   ├── changes.ts         GET/POST /api/changes
 │   └── blobs.ts           content-addressed blob store on disk
+├── mcp/src/
+│   ├── index.ts           stdio MCP server, EIDET_URL
+│   ├── client.ts          sync client: pull mirror, push, blob upload, LWW stamp
+│   └── tools.ts           list/get/create/update/delete for decks and cards
 └── web/
     ├── src/db/            Dexie schema, every write (mutations.ts), images, useParams
     ├── src/sync/          sync loop, reachability, blob queue
