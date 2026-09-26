@@ -11,7 +11,9 @@ keep those references valid when editing.
 
 ```bash
 make dev          # web :5175 + server :8083
-make check        # typecheck + unit tests, every package
+make check        # typecheck + lint + unit tests, every package
+make lint         # eslint + prettier --check (make format rewrites)
+make bench        # vitest bench: queue, retrievability, push/pull
 make e2e          # offline/PWA suite (builds first; needs a prod build)
 make build        # vite build -> web/dist, incl. service worker
 ```
@@ -43,11 +45,12 @@ apart. If a change makes sense for "a card's schedule", it is probably wrong.
 ## Architecture
 
 - `shared/src/` — the model, all pure. `schedule.ts` is the **only** file that
-  imports `ts-fsrs`; `queue.ts` owns due selection, cue choice and batching.
-  Screens never do date maths.
-- `server/src/` — stores and syncs, **never schedules**. `changes.ts` is the
-  whole protocol; `db.ts` owns the numbered migration list and the `seq`
-  counter.
+  imports `ts-fsrs`; `queue.ts` owns due selection, cue choice and batching;
+  `sides.ts` resolves a side against its deck. Screens never do date maths.
+- `server/src/` — stores and syncs, **never schedules**, and imports only types
+  from `@eidet/shared`. `changes.ts` is the whole protocol; `app.ts` is the
+  HTTP handler (tested in `test/app.test.ts`); `db.ts` owns the numbered
+  migration list, the `seq` counter and the prepared-statement cache (`stmt`).
 - `web/src/db/` — Dexie is the device's source of truth (not a response cache);
   `mutations.ts` holds every write. `web/src/sync/` reconciles with the server.
   `web/src/session/` owns the review session record.
@@ -58,6 +61,18 @@ apart. If a change makes sense for "a card's schedule", it is probably wrong.
   never computed on a read path. Fuzz makes a fold over the log
   non-deterministic, which is exactly why the snapshot is stored. `replay()`
   (fuzz off) is for parameter changes only.
+- **Which sides have a memory is reconciled, never assumed.** A side holds one
+  iff it is filled, tested, and its card and deck are live. `reconcileMemories`
+  enforces that and runs on every path that can change the answer: `saveCard`,
+  `updateDeck` with fields, and every pulled card/deck (after
+  `rebuildMemoriesFrom`). A side regaining a schedule takes its newest
+  review's `memoryAfter`. Skip it and synced cards become ungradeable.
+- **A reset is a review** (`Rating.Reset`, 0; `cueSideId` null) written by
+  `resetSide` — never a bare `memories.put`, which would not sync and which
+  `replay()` would undo.
+- **A deck's `mode` is fixed at creation;** `updateDeck`'s `DeckPatch` excludes
+  it. Schema cards are aligned to the deck's current fields in the editor
+  (`alignSidesToDeck`).
 - **Reviews are append-only and immutable.** That is what makes sync
   conflict-free for the one class of data that must never be lost. Decks and
   cards are last-write-wins on `updatedAt` with `deletedAt` tombstones.
@@ -91,6 +106,9 @@ apart. If a change makes sense for "a card's schedule", it is probably wrong.
 - **`erasableSyntaxOnly` is on.** The server runs under Node type stripping —
   no enums, no constructor parameter properties, no decorators, anywhere.
 - **Dexie cannot index booleans**; `LocalBlob.uploaded` is `0 | 1`.
+- **Screens read the clock through `useNow()`**, never `Date.now()` in render
+  (the react-hooks lint enforces it). **Review transitions are single-flight**
+  (`useSessionStep`): a second tap mid-step is dropped.
 - **Never write to a table from inside a `useLiveQuery`.** It re-triggers the
   query that made the write. `currentParams()` creates a parameter set, so
   screens read it through `db/useParams.ts`, which creates in an effect and
