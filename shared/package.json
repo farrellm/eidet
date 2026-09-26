@@ -6,12 +6,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
+    "./sides": "./src/sides.ts",
     "./schedule": "./src/schedule.ts",
-    "./queue": "./src/queue.ts"
+    "./queue": "./src/queue.ts",
+    "./collections": "./src/collections.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bench": "vitest bench --run"
   },
   "dependencies": {
     "ts-fsrs": "^5.4.1"

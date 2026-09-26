@@ -11,13 +11,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { type Card, type Deck, type Side, sideLabel, sideTested } from '@eidet/shared'
+import {
+  type Card,
+  type Deck,
+  type Side,
+  alignSidesToDeck,
+  sideFilled,
+  sideLabel,
+  sideTested,
+} from '@eidet/shared'
 import { db } from '../db/db.ts'
-import { blankCard, blankSide, deleteCard, newId, saveCard } from '../db/mutations.ts'
-import { resetSide } from '../db/mutations.ts'
-import { formatWhen } from '../ui/format.ts'
+import { blankCard, blankSide, deleteCard, newId, resetSide, saveCard } from '../db/mutations.ts'
+import { countOf, formatWhen } from '../ui/format.ts'
 import { Ramp, memoryRamp } from '../ui/Ramp.tsx'
 import { ImageSideInput } from '../ui/ImageSideInput.tsx'
+import { useNow } from '../ui/useNow.ts'
 
 export function CardEditor() {
   const { deckId = '', cardId = '' } = useParams()
@@ -31,16 +39,18 @@ export function CardEditor() {
   const loaded = useRef(false)
 
   // Restore a draft before falling back to the stored card, so a reload
-  // mid-edit returns to the unsaved text rather than discarding it.
+  // mid-edit returns to the unsaved text rather than discarding it. Either way
+  // the card is lined up with the deck's current fields: one added since the
+  // card was made needs a slot here, or it could never be filled in.
   useEffect(() => {
     if (loaded.current || !deck) return
     if (!isNew && stored === undefined) return
     let live = true
-    db.ui.get(draftKey).then((row) => {
+    void db.ui.get(draftKey).then((row) => {
       if (!live || loaded.current) return
       loaded.current = true
-      if (row) setCard(row.value as Card)
-      else setCard(isNew ? blankCard(deck) : (stored as Card))
+      const base = (row?.value as Card | undefined) ?? (isNew ? blankCard(deck) : stored!)
+      setCard(alignSidesToDeck(deck, base, newId))
     })
     return () => {
       live = false
@@ -60,21 +70,21 @@ export function CardEditor() {
   const save = async () => {
     await saveCard(card)
     await db.ui.delete(draftKey)
-    navigate(`/deck/${deckId}`)
+    void navigate(`/deck/${deckId}`)
   }
 
   const discard = async () => {
     await db.ui.delete(draftKey)
-    navigate(`/deck/${deckId}`)
+    void navigate(`/deck/${deckId}`)
   }
 
   const remove = async () => {
     await deleteCard(card.id)
     await db.ui.delete(draftKey)
-    navigate(`/deck/${deckId}`)
+    void navigate(`/deck/${deckId}`)
   }
 
-  const usable = card.sides.filter((s) => s.value.trim().length > 0).length >= 2
+  const usable = card.sides.filter(sideFilled).length >= 2
 
   return (
     <div className="app">
@@ -121,7 +131,7 @@ export function CardEditor() {
             onClick={() =>
               edit({
                 ...card,
-                sides: [...card.sides, { ...blankSide(null), id: newId(), label: '', tested: true }],
+                sides: [...card.sides, { ...blankSide(null), label: '', tested: true }],
               })
             }
           >
@@ -170,7 +180,7 @@ function SideEditor({
   onRemove?: (() => void) | undefined
 }) {
   const memory = useLiveQuery(() => db.memories.get(side.id), [side.id])
-  const now = Date.now()
+  const now = useNow()
 
   return (
     <section className="field">
@@ -245,9 +255,7 @@ function SideEditor({
                   everywhere else, not a spelled-out R. */}
               <Ramp step={memoryRamp(memory, now)} />
               <span className="num">due {formatWhen(memory.due, now)}</span>
-              <span className="num">
-                {memory.reps} {memory.reps === 1 ? 'review' : 'reviews'}
-              </span>
+              <span className="num">{countOf(memory.reps, 'review')}</span>
               {memory.reps > 0 ? (
                 <button className="link" onClick={() => resetSide(side.id)}>
                   Reset schedule

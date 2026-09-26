@@ -15,6 +15,7 @@
  */
 import { useLayoutEffect, useRef } from 'react'
 import { type Deck, type Side, sideLabel } from '@eidet/shared'
+import { countOf } from './format.ts'
 import { SideValue } from './SideValue.tsx'
 
 const DURATION = 220
@@ -74,11 +75,7 @@ export function CueCard({
         </span>
         <span className="label cuecard__label">{sideLabel(deck, cue)}</span>
       </div>
-      {docked ? null : (
-        <p className="fold">
-          {hidden} {hidden === 1 ? 'side' : 'sides'} hidden
-        </p>
-      )}
+      {docked ? null : <p className="fold">{countOf(hidden, 'side')} hidden</p>}
     </div>
   )
 }

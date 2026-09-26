@@ -9,7 +9,7 @@
  * both phases, which is what lets the reveal dock it from the centre to the top
  * strip instead of cutting between two different elements (§3).
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
@@ -38,11 +38,13 @@ import { useSyncStatus } from '../sync/SyncContext.tsx'
 import { CueCard } from '../ui/CueCard.tsx'
 import { GradeBar } from '../ui/GradeBar.tsx'
 import { SideRow } from '../ui/SideRow.tsx'
+import { countOf } from '../ui/format.ts'
 
 export function Review() {
   const { sessionId = '' } = useParams()
   const navigate = useNavigate()
   const [session, setSession] = useState<ReviewSession | null>(null)
+  const advance = useSessionStep(session, setSession)
   const [missing, setMissing] = useState(false)
   const [undoable, setUndoable] = useState(false)
   const { lastSyncedAt } = useSyncStatus()
@@ -51,7 +53,7 @@ export function Review() {
   // lands on the identical screen with the identical queue position (§6).
   useEffect(() => {
     let live = true
-    loadSession(sessionId).then((s) => {
+    void loadSession(sessionId).then((s) => {
       if (!live) return
       if (s) setSession(s)
       else setMissing(true)
@@ -67,7 +69,7 @@ export function Review() {
   useEffect(() => {
     let live = true
     if (!session) return
-    canUndo(session).then((ok) => {
+    void canUndo(session).then((ok) => {
       if (live) setUndoable(ok)
     })
     return () => {
@@ -131,24 +133,60 @@ export function Review() {
           batch={batch}
           memories={memories}
           missed={session.missedSideIds}
-          onToggle={async (id) => setSession(await toggleMissed(session, id))}
-          onGrade={async (rating) => setSession(await commit(session, rating))}
+          onToggle={(id) => advance((s) => toggleMissed(s, id))}
+          onGrade={(rating) => advance((s) => commit(s, rating))}
         />
       ) : (
         <div className="dock">
           {undoable ? (
             <p className="undo">
-              <button className="link" onClick={async () => setSession(await undo(session))}>
+              <button className="link" onClick={() => advance(undo)}>
                 Undo last grade
               </button>
             </p>
           ) : null}
-          <button className="action" onClick={async () => setSession(await reveal(session))}>
+          <button className="action" onClick={() => advance(reveal)}>
             Reveal
           </button>
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * One session transition at a time. Every step is an await on IndexedDB, and a
+ * second tap landing inside it would run against the session the first one
+ * started from — a double-tapped grade wrote two sets of reviews for one
+ * reveal. Taps during a step are dropped, and each step starts from the
+ * session the previous one produced, not from whatever the last render saw.
+ */
+function useSessionStep(
+  session: ReviewSession | null,
+  setSession: (s: ReviewSession) => void,
+): (step: (s: ReviewSession) => Promise<ReviewSession>) => void {
+  const latest = useRef(session)
+  const busy = useRef(false)
+  useEffect(() => {
+    // The first load arrives from outside; a step's own result is already here.
+    if (!busy.current) latest.current = session
+  }, [session])
+
+  return useCallback(
+    (step) => {
+      const from = latest.current
+      if (busy.current || !from) return
+      busy.current = true
+      void step(from)
+        .then((next) => {
+          latest.current = next
+          setSession(next)
+        })
+        .finally(() => {
+          busy.current = false
+        })
+    },
+    [setSession],
   )
 }
 
@@ -203,9 +241,7 @@ function Done({ session, onLeave }: { session: ReviewSession; onLeave: () => voi
         <span className="strip__spacer" />
       </div>
       <div className="state">
-        <p className="content">
-          {session.gradedCount} {session.gradedCount === 1 ? 'side' : 'sides'} reviewed.
-        </p>
+        <p className="content">{countOf(session.gradedCount, 'side')} reviewed.</p>
         <p className="label">Saved on this phone.</p>
       </div>
       <div className="dock">

@@ -3,7 +3,8 @@
  *
  * A schema deck declares its fields once and every card gets one slot per
  * field; a freeform deck lets each card carry its own. The mode is picked here,
- * at creation, because it decides the shape of every editor afterwards.
+ * at creation, and cannot be changed afterwards: it decides the shape of every
+ * card's sides, and switching would leave them all unlabelled and untested.
  */
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
@@ -53,16 +54,15 @@ export function DeckSettings() {
         : 'auto'
     const payload = {
       name: name.trim() || 'Untitled deck',
-      mode,
       fields: mode === 'schema' ? trimmed : [],
-      cuePreference: pinned as Deck['cuePreference'],
+      cuePreference: pinned,
     }
     if (isNew) {
-      const id = await createDeck(payload)
-      navigate(`/deck/${id}`)
+      const id = await createDeck({ ...payload, mode })
+      void navigate(`/deck/${id}`)
     } else {
-      await updateDeck(deckId!, payload)
-      navigate(`/deck/${deckId}`)
+      await updateDeck(deckId, payload)
+      void navigate(`/deck/${deckId}`)
     }
   }
 
@@ -92,23 +92,25 @@ export function DeckSettings() {
           />
         </section>
 
-        <section className="field">
-          <span className="label">Card shape</span>
-          <div className="choices">
-            <Choice
-              checked={mode === 'schema'}
-              onSelect={() => setMode('schema')}
-              title="Same fields on every card"
-              detail="Name the fields once. Every card gets a slot for each, and blank slots are skipped."
-            />
-            <Choice
-              checked={mode === 'freeform'}
-              onSelect={() => setMode('freeform')}
-              title="Different sides per card"
-              detail="Each card carries its own labelled sides. Nothing lines up, but anything goes."
-            />
-          </div>
-        </section>
+        {isNew ? (
+          <section className="field">
+            <span className="label">Card shape</span>
+            <div className="choices">
+              <Choice
+                checked={mode === 'schema'}
+                onSelect={() => setMode('schema')}
+                title="Same fields on every card"
+                detail="Name the fields once. Every card gets a slot for each, and blank slots are skipped."
+              />
+              <Choice
+                checked={mode === 'freeform'}
+                onSelect={() => setMode('freeform')}
+                title="Different sides per card"
+                detail="Each card carries its own labelled sides. Nothing lines up, but anything goes."
+              />
+            </div>
+          </section>
+        ) : null}
 
         {mode === 'schema' ? (
           <section className="field">
@@ -125,7 +127,9 @@ export function DeckSettings() {
                   placeholder={`Field ${i + 1}`}
                   aria-label={`Field ${i + 1} name`}
                   onChange={(e) =>
-                    setFields(fields.map((x) => (x.id === f.id ? { ...x, name: e.target.value } : x)))
+                    setFields(
+                      fields.map((x) => (x.id === f.id ? { ...x, name: e.target.value } : x)),
+                    )
                   }
                 />
                 <label className="toggle">
@@ -206,7 +210,7 @@ export function DeckSettings() {
         ) : null}
 
         {!isNew && siblings && siblings.length > 1 ? (
-          <DeckOrder deckId={deckId!} decks={siblings} />
+          <DeckOrder deckId={deckId} decks={siblings} />
         ) : null}
       </div>
 
@@ -219,8 +223,8 @@ export function DeckSettings() {
           <button
             className="action action--quiet add-deck"
             onClick={async () => {
-              await deleteDeck(deckId!)
-              navigate('/')
+              await deleteDeck(deckId)
+              void navigate('/')
             }}
           >
             Delete deck

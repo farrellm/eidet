@@ -11,10 +11,19 @@ import { retrievability } from '@eidet/shared'
 
 export type RampStep = 0 | 1 | 2 | 3
 
+/**
+ * The ramp's four bands, by upper edge of R. The one definition: every mark and
+ * the home screen's histogram axis read their thresholds from here.
+ */
+export const RAMP_BANDS: readonly { max: number; step: RampStep }[] = [
+  { max: 0.7, step: 0 },
+  { max: 0.85, step: 1 },
+  { max: 0.95, step: 2 },
+  { max: 1, step: 3 },
+]
+
 export function rampStep(r: number): RampStep {
-  if (r < 0.7) return 0
-  if (r < 0.85) return 1
-  if (r < 0.95) return 2
+  for (const band of RAMP_BANDS) if (r < band.max) return band.step
   return 3
 }
 

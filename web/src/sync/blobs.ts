@@ -49,7 +49,12 @@ export async function downloadMissing(limit = 3): Promise<number> {
   }
   if (wanted.size === 0) return 0
 
-  const held = new Set(await db.blobs.where('sha256').anyOf([...wanted]).primaryKeys())
+  const held = new Set(
+    await db.blobs
+      .where('sha256')
+      .anyOf([...wanted])
+      .primaryKeys(),
+  )
   let done = 0
   let tried = 0
   for (const sha256 of wanted) {

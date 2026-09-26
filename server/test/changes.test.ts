@@ -45,7 +45,21 @@ const review = (over: Partial<Review> = {}): Review => ({
   rating: 3,
   reviewedAt: 5000,
   memoryBefore: null,
-  memoryAfter: { sideId: 's1', cardId: 'c1', deckId: 'd1', due: 9000, stability: 3, difficulty: 5, elapsedDays: 0, scheduledDays: 1, learningSteps: 0, reps: 1, lapses: 0, state: 2, lastReview: 5000 },
+  memoryAfter: {
+    sideId: 's1',
+    cardId: 'c1',
+    deckId: 'd1',
+    due: 9000,
+    stability: 3,
+    difficulty: 5,
+    elapsedDays: 0,
+    scheduledDays: 1,
+    learningSteps: 0,
+    reps: 1,
+    lapses: 0,
+    state: 2,
+    lastReview: 5000,
+  },
   paramsHash: 'abc12345',
   ...over,
 })
@@ -120,7 +134,11 @@ describe('reviews are append-only', () => {
   it('unions reviews from two offline clients', () => {
     push(db, { reviews: [review({ id: 'a' }), review({ id: 'b' })] })
     push(db, { reviews: [review({ id: 'b' }), review({ id: 'c' })] })
-    expect(pull(db, 0).reviews.map((r) => r.id).sort()).toEqual(['a', 'b', 'c'])
+    expect(
+      pull(db, 0)
+        .reviews.map((r) => r.id)
+        .sort(),
+    ).toEqual(['a', 'b', 'c'])
   })
 
   it('preserves the memory snapshot that scheduling depends on', () => {
@@ -166,10 +184,12 @@ describe('paging', () => {
     const first = pull(db, 0)
     expect(first.reviews).toHaveLength(PAGE)
     expect(first.seq).toBeGreaterThan(0)
+    expect(first.more).toBe(true)
 
     const second = pull(db, first.seq)
     expect(second.reviews).toHaveLength(5)
     expect(second.seq).toBeGreaterThan(first.seq)
+    expect(second.more).toBe(false)
 
     // Every row arrived exactly once across the two pages.
     const ids = [...first.reviews, ...second.reviews].map((r) => r.id)

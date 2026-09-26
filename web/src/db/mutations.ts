@@ -23,11 +23,13 @@ import {
   defaultParamSet,
   grade as gradeSide,
   newMemory,
+  paramSet,
   replay,
+  resetReview,
   sideFilled,
   sideTested,
 } from '@eidet/shared'
-import { db, enqueue, withSendLock } from './db.ts'
+import { db, enqueue, newestReview, outboxKey, withSendLock } from './db.ts'
 
 export const newId = () => crypto.randomUUID()
 
@@ -40,9 +42,7 @@ export async function currentParams(now = Date.now()): Promise<ParamSet> {
     if (set) return upgradeParams(set)
   }
   const set = defaultParamSet(now)
-  await db.paramSets.put(set)
-  await db.ui.put({ key: 'params', value: set.hash })
-  await enqueue('paramSets', set.hash, now)
+  await setParams(set, now)
   return set
 }
 
@@ -90,11 +90,21 @@ export async function createDeck(
   return deck.id
 }
 
-export async function updateDeck(id: DeckId, patch: Partial<Deck>, now = Date.now()) {
+/**
+ * A deck's `mode` is fixed at creation: its cards' sides are shaped by it, and
+ * switching would leave every one of them resolving as unlabelled and untested.
+ */
+export type DeckPatch = Partial<Omit<Deck, 'id' | 'mode' | 'updatedAt' | 'seq'>>
+
+export async function updateDeck(id: DeckId, patch: DeckPatch, now = Date.now()) {
   const deck = await db.decks.get(id)
   if (!deck) return
-  await db.decks.put({ ...deck, ...patch, id, updatedAt: now })
+  const next: Deck = { ...deck, ...patch, id, updatedAt: now }
+  await db.decks.put(next)
   await enqueue('decks', id, now)
+  // A field's `tested` flag lives on the deck, so this is where a side gains
+  // or loses its schedule in a schema deck.
+  if (patch.fields) await reconcileDeck(next, now)
 }
 
 /**
@@ -148,25 +158,55 @@ export async function saveCard(card: Card, now = Date.now()) {
   const deck = await db.decks.get(card.deckId)
   if (!deck) throw new Error(`saveCard: no deck ${card.deckId}`)
 
-  await db.transaction('rw', db.cards, db.memories, db.outbox, async () => {
+  await db.transaction('rw', [db.cards, db.memories, db.reviews, db.outbox], async () => {
     await db.cards.put({ ...card, updatedAt: now })
-
-    const shouldSchedule = new Set(
-      card.sides.filter((s) => sideFilled(s) && sideTested(deck, s)).map((s) => s.id),
-    )
-    const existing = await db.memories.where('cardId').equals(card.id).toArray()
-    const have = new Set(existing.map((m) => m.sideId))
-
-    for (const sideId of shouldSchedule) {
-      if (!have.has(sideId)) {
-        await db.memories.put(newMemory({ sideId, cardId: card.id, deckId: card.deckId }, now))
-      }
-    }
-    for (const m of existing) {
-      if (!shouldSchedule.has(m.sideId)) await db.memories.delete(m.sideId)
-    }
+    await reconcileMemories(deck, card, now)
     await enqueue('cards', card.id, now)
   })
+}
+
+/**
+ * Bring a card's memories in line with which of its sides should hold one: a
+ * filled, tested side of a live card in a live deck. Every path that can change
+ * that answer ends here — saving a card, editing a deck's fields, and pulling
+ * either from the server.
+ *
+ * A side that gains a schedule takes its newest review's `memoryAfter` if it
+ * has one — memory is derived from the log (§5), so a side that was untested
+ * for a while picks up where it left off rather than starting over. Only a side
+ * with no history starts fresh, due immediately.
+ *
+ * Call inside a transaction over `memories` and `reviews`.
+ */
+export async function reconcileMemories(deck: Deck | undefined, card: Card, now: number) {
+  const live = deck !== undefined && deck.deletedAt === null && card.deletedAt === null
+  const shouldSchedule = new Set(
+    live ? card.sides.filter((s) => sideFilled(s) && sideTested(deck, s)).map((s) => s.id) : [],
+  )
+  const existing = await db.memories.where('cardId').equals(card.id).toArray()
+  const have = new Set(existing.map((m) => m.sideId))
+
+  const stale = existing.filter((m) => !shouldSchedule.has(m.sideId)).map((m) => m.sideId)
+  if (stale.length > 0) await db.memories.bulkDelete(stale)
+  for (const sideId of shouldSchedule) {
+    if (have.has(sideId)) continue
+    await db.memories.put(
+      await restoredMemory({ sideId, cardId: card.id, deckId: card.deckId }, now),
+    )
+  }
+}
+
+/** Every card of a deck, reconciled after the deck itself changed. */
+export async function reconcileDeck(deck: Deck, now: number) {
+  await db.transaction('rw', [db.cards, db.memories, db.reviews], async () => {
+    const cards = await db.cards.where('deckId').equals(deck.id).toArray()
+    for (const card of cards) await reconcileMemories(deck, card, now)
+  })
+}
+
+/** What a side's memory is by the log: its newest review's snapshot, or new. */
+async function restoredMemory(ids: Pick<Memory, 'sideId' | 'cardId' | 'deckId'>, now: number) {
+  return (await newestReview(ids.sideId))?.memoryAfter ?? newMemory(ids, now)
 }
 
 export function blankSide(fieldId: string | null, kind: Side['kind'] = 'text'): Side {
@@ -188,7 +228,7 @@ export function blankCard(deck: Deck, now = Date.now()): Card {
 export async function deleteCard(id: CardId, now = Date.now()) {
   const card = await db.cards.get(id)
   if (!card) return
-  await db.transaction('rw', db.cards, db.memories, db.outbox, async () => {
+  await db.transaction('rw', [db.cards, db.memories, db.outbox], async () => {
     await db.cards.put({ ...card, deletedAt: now, updatedAt: now })
     await db.memories.where('cardId').equals(id).delete()
     await enqueue('cards', id, now)
@@ -198,6 +238,8 @@ export async function deleteCard(id: CardId, now = Date.now()) {
 // ----------------------------------------------------------------- reviews
 
 export interface RevealGrades {
+  cardId: CardId
+  deckId: DeckId
   cueSideId: SideId
   /** Sides being asked, and the grade each is getting. */
   grades: { sideId: SideId; rating: Grade }[]
@@ -210,10 +252,14 @@ export interface RevealGrades {
 export async function commitReveal(reveal: RevealGrades, now = Date.now()): Promise<ReviewId[]> {
   const params = await currentParams(now)
   const written: ReviewId[] = []
-  await db.transaction('rw', db.memories, db.reviews, db.outbox, async () => {
+  await db.transaction('rw', [db.memories, db.reviews, db.outbox], async () => {
     for (const { sideId, rating } of reveal.grades) {
-      const memory = await db.memories.get(sideId)
-      if (!memory) continue
+      // A missing memory is a bug elsewhere (every scheduled side should have
+      // one), but dropping the grade on the floor would hide it as a review
+      // that silently did nothing. Grade from what the log says instead.
+      const memory =
+        (await db.memories.get(sideId)) ??
+        (await restoredMemory({ sideId, cardId: reveal.cardId, deckId: reveal.deckId }, now))
       const result = gradeSide({
         reviewId: newId(),
         memory,
@@ -243,7 +289,7 @@ export async function commitReveal(reveal: RevealGrades, now = Date.now()): Prom
  */
 export async function isUnsent(reviewIds: ReviewId[]): Promise<boolean> {
   if (reviewIds.length === 0) return false
-  const keys = await db.outbox.bulkGet(reviewIds.map((id) => `reviews:${id}`))
+  const keys = await db.outbox.bulkGet(reviewIds.map((id) => outboxKey('reviews', id)))
   return keys.every(Boolean)
 }
 
@@ -266,8 +312,8 @@ export async function isUnsent(reviewIds: ReviewId[]): Promise<boolean> {
 export async function undoCommit(reviewIds: ReviewId[], now = Date.now()): Promise<boolean> {
   if (reviewIds.length === 0) return false
   return withSendLock(() =>
-    db.transaction('rw', db.memories, db.reviews, db.outbox, async () => {
-      const queued = await db.outbox.bulkGet(reviewIds.map((id) => `reviews:${id}`))
+    db.transaction('rw', [db.memories, db.reviews, db.outbox], async () => {
+      const queued = await db.outbox.bulkGet(reviewIds.map((id) => outboxKey('reviews', id)))
       if (!queued.every(Boolean)) return false
       for (const id of reviewIds) {
         const review = await db.reviews.get(id)
@@ -275,20 +321,42 @@ export async function undoCommit(reviewIds: ReviewId[], now = Date.now()): Promi
         const ids = { sideId: review.sideId, cardId: review.cardId, deckId: review.deckId }
         await db.memories.put(review.memoryBefore ?? newMemory(ids, now))
         await db.reviews.delete(id)
-        await db.outbox.delete(`reviews:${id}`)
+        await db.outbox.delete(outboxKey('reviews', id))
       }
       return true
     }),
   )
 }
 
-/** Forget a side entirely and start it over. The review log is left intact. */
+/**
+ * Forget a side and start it over. Recorded as a reset review (§5) rather than
+ * a bare memory write, so it syncs to other devices and a replay keeps it; the
+ * reviews before it stay in the log.
+ */
 export async function resetSide(sideId: SideId, now = Date.now()) {
-  const memory = await db.memories.get(sideId)
-  if (!memory) return
-  await db.memories.put(
-    newMemory({ sideId, cardId: memory.cardId, deckId: memory.deckId }, now),
-  )
+  const params = await currentParams(now)
+  await db.transaction('rw', [db.memories, db.reviews, db.outbox], async () => {
+    const memory = await db.memories.get(sideId)
+    if (!memory) return
+    const result = resetReview({ reviewId: newId(), memory, now, params })
+    await db.memories.put(result.memory)
+    await db.reviews.put(result.review)
+    await enqueue('reviews', result.review.id, now)
+  })
+}
+
+/**
+ * Adopt new retention or learning steps: a new immutable set under the same
+ * weights, then a replay of every side's log under it (§2).
+ */
+export async function changeParams(
+  base: ParamSet,
+  change: Pick<ParamSet, 'requestRetention' | 'learningSteps'>,
+  now = Date.now(),
+) {
+  const next = paramSet([...base.w], change.requestRetention, change.learningSteps, now)
+  await setParams(next, now)
+  await replayAll(next)
 }
 
 /**
@@ -300,9 +368,7 @@ export async function replayAll(params: ParamSet) {
   const rebuilt: Memory[] = []
   for (const m of memories) {
     const reviews = await db.reviews.where('sideId').equals(m.sideId).toArray()
-    rebuilt.push(
-      replay({ sideId: m.sideId, cardId: m.cardId, deckId: m.deckId }, reviews, params),
-    )
+    rebuilt.push(replay({ sideId: m.sideId, cardId: m.cardId, deckId: m.deckId }, reviews, params))
   }
   await db.memories.bulkPut(rebuilt)
 }

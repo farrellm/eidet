@@ -57,8 +57,7 @@ const batch: CardBatch = {
   contextSideIds: ['s-f-note'],
 }
 
-const memoryFor = (sideId: string): Memory =>
-  newMemory({ sideId, cardId: 'c1', deckId: 'd1' }, T0)
+const memoryFor = (sideId: string): Memory => newMemory({ sideId, cardId: 'c1', deckId: 'd1' }, T0)
 
 /** The reveal as `Review` composes it, without the router or the database. */
 function Reveal({ missed = [] as string[] }) {
@@ -114,8 +113,7 @@ describe('the reveal', () => {
 
   it('keeps a missed toggle through a re-render', () => {
     const { rerender } = render(<Reveal missed={['s-f-mean']} />)
-    const marked = () =>
-      screen.getByText('grief, melancholy').closest('.row') as HTMLElement
+    const marked = () => screen.getByText('grief, melancholy').closest('.row') as HTMLElement
 
     expect(marked().getAttribute('aria-pressed')).toBe('true')
     expect(marked().className).toContain('row--missed')

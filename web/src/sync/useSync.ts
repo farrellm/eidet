@@ -61,14 +61,14 @@ export function useSync(): SyncControl {
         const next = pending ? AFTER_WRITE : delay
         pending = false
         clearTimeout(timer)
-        timer = setTimeout(run, next)
+        timer = setTimeout(() => void run(), next)
       }
     }
 
     const schedule = (delay: number) => {
       if (stopped) return
       clearTimeout(timer)
-      timer = setTimeout(run, delay)
+      timer = setTimeout(() => void run(), delay)
     }
 
     void run()

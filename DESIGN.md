@@ -334,7 +334,7 @@ Tapping a side row toggles it **missed** — the row dims and takes a brass left
 
 ### Deck
 
-List of cards; each row shows its sides as small ramp marks so you can see at a glance which cards are decaying. Search, add card, deck settings (fields, cue preference, mode).
+List of cards; each row shows its sides as small ramp marks so you can see at a glance which cards are decaying. Search, add card, deck settings (fields, cue preference; the mode is chosen once, at creation — see §11).
 
 ### Card editor
 
@@ -369,13 +369,15 @@ memory   (sideId PK, cardId, deckId, due, stability, difficulty,
           reps, lapses, state, lastReview, learningSteps)          -- derived
 reviews  (id PK, sideId, cardId, cueSideId, rating, reviewedAt,
           memoryBefore JSON, memoryAfter JSON, params JSON, seq)   -- append-only
+           rating: 1–4 a grade, 0 a reset (cueSideId null)
 blobs    (sha256 PK, mime, bytes, width, height, createdAt)
 paramSets(hash PK, w JSON, requestRetention, learningSteps JSON, createdAt, seq)
 ```
 
 - **`sides` are a JSON column on `cards`, not their own table.** Cards are always read, written, and edited whole; splitting them would buy nothing and cost a join on every read.
 - **`memory` is derived** — always equal to the `memoryAfter` of the newest review for that side. It is materialised for query speed (the due queue is one indexed range scan on `due`), never authoritative.
-- **`reviews` is append-only and immutable.** This is what makes sync nearly conflict-free (§6) and what feeds the optimiser (§9 phase 4).
+- **`reviews` is append-only and immutable.** This is what makes sync nearly conflict-free (§6) and what feeds the optimiser (§9 phase 4). "Reset schedule" is a review too — rating 0, whose `memoryAfter` is a fresh memory — so it syncs like any other and a replay starts over at it rather than folding past it. The optimiser must skip rating-0 rows.
+- **Which sides hold a memory** is a function of the card and its deck: a filled, tested side of a live card in a live deck. Every path that can change that — saving a card, editing a deck's fields, pulling either — reconciles the card's memories, and a side that regains one takes its newest review's `memoryAfter` rather than starting over.
 - **`blobs` are content-addressed by SHA-256**, so they are immutable, deduplicated, and cacheable forever.
 
 ---
@@ -401,7 +403,7 @@ AisleFlow caches *server responses* with TanStack Query and queues mutations. Th
 | immutable | `blobs` | content-addressed; upload if absent, never modified |
 
 ```
-GET  /api/changes?since=<seq>   → { seq, decks[], cards[], reviews[], blobs[] }
+GET  /api/changes?since=<seq>   → { seq, more, decks[], cards[], reviews[], blobs[] }
 POST /api/changes               ← { decks[], cards[], reviews[] } → { seq }
 PUT  /api/blobs/:sha256         idempotent upload
 GET  /api/blobs/:sha256         immutable, Cache-Control: immutable, max-age=31536000
@@ -447,19 +449,24 @@ pnpm workspace (pnpm 11 installed; matches `jelly-sim`), three packages, one lan
 eidet/
 ├── DESIGN.md              authoritative design doc; code comments cite its §§
 ├── CLAUDE.md              commands, ports, invariants
-├── Makefile               dev / build / test / e2e / deploy
+├── Makefile               dev / build / check / lint / bench / e2e / deploy
 ├── pnpm-workspace.yaml
 ├── shared/src/
-│   ├── types.ts           Deck, Card, Side, Memory, Review, sync envelope
-│   ├── schedule.ts        ts-fsrs wrapper: grade(), retrievability(), replay()
-│   └── queue.ts           due-queue build, cue selection, batching  ← pure, heavily tested
+│   ├── types.ts           Deck, Card, Side, Memory, Review, sync envelope — types only
+│   ├── sides.ts           sideLabel/sideTested/sideFilled, alignSidesToDeck
+│   ├── schedule.ts        ts-fsrs wrapper: grade(), resetReview(), retrievability(), replay()
+│   ├── queue.ts           due-queue build, cue selection, batching  ← pure, heavily tested
+│   └── collections.ts     groupBy
 ├── server/src/
-│   ├── index.ts           node:http, serves dist/ in prod
-│   ├── db.ts              node:sqlite, schema + migrations
+│   ├── index.ts           wiring: open the store, listen
+│   ├── config.ts          EIDET_* environment
+│   ├── app.ts             createHandler(): routing, body limits, HttpError
+│   ├── static.ts          serves web/dist with an SPA fallback
+│   ├── db.ts              node:sqlite, schema + migrations, seq, statement cache
 │   ├── changes.ts         GET/POST /api/changes
 │   └── blobs.ts           content-addressed blob store on disk
 └── web/
-    ├── src/db/            Dexie schema, useLiveQuery hooks
+    ├── src/db/            Dexie schema, every write (mutations.ts), images, useParams
     ├── src/sync/          sync loop, reachability, blob queue
     ├── src/session/       session record, restore-on-boot
     ├── src/screens/       Today, Review, Deck, CardEditor, Settings
@@ -616,6 +623,25 @@ Recorded here because they changed the design, not just the code.
   retrievability nearly but not exactly coincide, so painting bars brass left a
   boundary bin that was honestly neither. An axis annotation is one contiguous
   mark at a fixed, principled position — the retention target.
+- **A pull reconciles memories, not only reviews.** Memories were rebuilt from
+  pulled reviews alone, so a card made on another device and never reviewed
+  arrived with no memory at all: due in the queue, but grading it wrote
+  nothing. Tombstones and `tested` changes from elsewhere likewise left stale
+  memories inflating the home screen's count. Pulled cards and decks now run
+  the same reconciliation as saving a card.
+- **A pull says when there is more.** Tables page independently, so the client
+  cannot tell a full page from a finished one; `more` says so, and a sync pages
+  until caught up instead of taking one page per 30 s poll.
+- **Reset schedule is a review.** It used to overwrite the memory directly,
+  which never synced and was undone by the next replay — memory has to be what
+  the log says it is (§5). It is now an append-only row with rating 0.
+- **A deck's mode is fixed at creation.** Switching schema↔freeform later left
+  every side resolving as unlabelled and untested, since sides are shaped by
+  the mode. Fields added to a schema deck afterwards *are* supported: the
+  editor lines each card up with the deck's current fields.
+- **One review transition at a time.** Each step awaits IndexedDB, and a
+  double-tapped grade used to run twice from the same session, writing two
+  sets of reviews for one reveal.
 - **Ramp marks are taken over every side of a deck, not only the ones not due.**
   A side is scheduled for the moment its recall reaches the target, so the
   not-due sides are all fresh by construction and a mark computed from them read

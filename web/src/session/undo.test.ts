@@ -190,8 +190,8 @@ describe('undo against a push in flight', () => {
 
   it('takes the review back before the push can collect it', async () => {
     const graded = await commit(session(), 3, T0 + 1000)
-    const fetched = vi.fn(async (_input: string, _init?: RequestInit) =>
-      new Response('{}', { status: 200 }),
+    const fetched = vi.fn(
+      async (_input: string, _init?: RequestInit) => new Response('{}', { status: 200 }),
     )
     vi.stubGlobal('fetch', fetched)
 
@@ -205,8 +205,7 @@ describe('undo against a push in flight', () => {
     expect(await db.reviews.count()).toBe(0)
     // The push went ahead — there is a parameter set to send — but it carries
     // no review, because the one it would have sent no longer exists.
-    const body = JSON.parse(String(fetched.mock.calls[0]![1]!.body)) as { reviews: unknown[] }
+    const body = JSON.parse(fetched.mock.calls[0]![1]!.body as string) as { reviews: unknown[] }
     expect(body.reviews).toEqual([])
   })
 })
-

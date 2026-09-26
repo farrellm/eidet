@@ -9,17 +9,20 @@ const MIN = 60_000
 const HOUR = 60 * MIN
 const DAY = 24 * HOUR
 
-const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
+/** "1 side", "3 sides". Every count the interface shows goes through this. */
+export function countOf(n: number, unit: string): string {
+  return `${n} ${unit}${n === 1 ? '' : 's'}`
+}
 
 export function formatDuration(ms: number): string {
   const abs = Math.abs(ms)
-  if (abs < HOUR) return plural(Math.max(1, Math.round(abs / MIN)), 'minute')
-  if (abs < DAY) return plural(Math.round(abs / HOUR), 'hour')
+  if (abs < HOUR) return countOf(Math.max(1, Math.round(abs / MIN)), 'minute')
+  if (abs < DAY) return countOf(Math.round(abs / HOUR), 'hour')
   const days = Math.round(abs / DAY)
-  if (days < 31) return plural(days, 'day')
-  if (days < 365) return plural(Math.round(days / 30.44), 'month')
+  if (days < 31) return countOf(days, 'day')
+  if (days < 365) return countOf(Math.round(days / 30.44), 'month')
   const years = days / 365.25
-  return years < 10 ? `${years.toFixed(1)} years` : plural(Math.round(years), 'year')
+  return years < 10 ? `${years.toFixed(1)} years` : countOf(Math.round(years), 'year')
 }
 
 /** "in 4 hours", "3 days ago", "now". */

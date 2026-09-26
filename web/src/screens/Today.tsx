@@ -8,18 +8,19 @@
 import { useNavigate } from 'react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Deck, Memory } from '@eidet/shared'
-import { DEFAULT_PARAMS } from '@eidet/shared'
+import { DEFAULT_PARAMS, groupBy } from '@eidet/shared'
 import { db } from '../db/db.ts'
 import { useCurrentParams } from '../db/useParams.ts'
 import { startSession } from '../session/session.ts'
 import { Ramp, memoryRamp, rampWord } from '../ui/Ramp.tsx'
 import { Cyanometer } from '../ui/Cyanometer.tsx'
-import { formatWhen } from '../ui/format.ts'
+import { countOf, formatWhen } from '../ui/format.ts'
 import { useSyncStatus } from '../sync/SyncContext.tsx'
+import { useNow } from '../ui/useNow.ts'
 
 export function Today() {
   const navigate = useNavigate()
-  const now = Date.now()
+  const now = useNow()
   const { status, lastSyncedAt } = useSyncStatus()
   const decks = useLiveQuery(() => db.decks.filter((d) => d.deletedAt === null).sortBy('order'), [])
   const memories = useLiveQuery(() => db.memories.toArray(), [])
@@ -32,13 +33,17 @@ export function Today() {
   if (!decks || !memories) return <div className="app" />
 
   const due = memories.filter((m) => m.due <= now)
+  const byDeck = groupBy(memories, (m) => m.deckId)
   const nextDue = memories
     .filter((m) => m.due > now)
-    .reduce<number | null>((soonest, m) => (soonest === null || m.due < soonest ? m.due : soonest), null)
+    .reduce<number | null>(
+      (soonest, m) => (soonest === null || m.due < soonest ? m.due : soonest),
+      null,
+    )
 
   const start = async () => {
-    const session = await startSession([], Date.now())
-    if (session) navigate(`/review/${session.id}`)
+    const session = await startSession()
+    if (session) void navigate(`/review/${session.id}`)
   }
 
   return (
@@ -73,7 +78,7 @@ export function Today() {
         ) : (
           <ul className="decks">
             {decks.map((deck) => (
-              <DeckRow key={deck.id} deck={deck} memories={memories} now={now} />
+              <DeckRow key={deck.id} deck={deck} memories={byDeck.get(deck.id) ?? []} now={now} />
             ))}
           </ul>
         )}
@@ -85,7 +90,7 @@ export function Today() {
         <div className="dock">
           {due.length > 0 ? (
             <button className="action" onClick={start}>
-              Review {due.length} {due.length === 1 ? 'side' : 'sides'}
+              Review {countOf(due.length, 'side')}
             </button>
           ) : (
             <p className="rest">
@@ -105,9 +110,17 @@ export function Today() {
   )
 }
 
-function DeckRow({ deck, memories, now }: { deck: Deck; memories: Memory[]; now: number }) {
+function DeckRow({
+  deck,
+  memories: mine,
+  now,
+}: {
+  deck: Deck
+  /** This deck's memories only, grouped once by the caller. */
+  memories: Memory[]
+  now: number
+}) {
   const navigate = useNavigate()
-  const mine = memories.filter((m) => m.deckId === deck.id)
   const due = mine.filter((m) => m.due <= now).length
 
   // The deck's typical strength, as one mark. Taken over every side, not only
@@ -124,7 +137,7 @@ function DeckRow({ deck, memories, now }: { deck: Deck; memories: Memory[]; now:
         <span className="deck__meta">
           {mine.length > 0 ? <Ramp step={median} label={`typically ${rampWord(median)}`} /> : null}
           <span className={due > 0 ? 'num deck__due' : 'num deck__due deck__due--none'}>
-            {due > 0 ? `${due} due` : `${mine.length} sides`}
+            {due > 0 ? `${due} due` : countOf(mine.length, 'side')}
           </span>
         </span>
       </button>

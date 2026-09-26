@@ -117,7 +117,9 @@ describe('due selection and batching', () => {
     )
 
     const gone = { ...kanji('k2'), deletedAt: T0 }
-    expect(buildQueue({ decks: [deck()], cards: [gone], memories: memories(), now: T0 })).toEqual([])
+    expect(buildQueue({ decks: [deck()], cards: [gone], memories: memories(), now: T0 })).toEqual(
+      [],
+    )
 
     expect(
       buildQueue({
@@ -170,12 +172,7 @@ describe('interleave', () => {
 
   it('falls back to the same deck once the others are exhausted', () => {
     const decks = [deck(), deck({ id: 'deck-birds' })]
-    const cards = [
-      kanji('k0'),
-      kanji('k1'),
-      kanji('k2'),
-      { ...kanji('b0'), deckId: 'deck-birds' },
-    ]
+    const cards = [kanji('k0'), kanji('k1'), kanji('k2'), { ...kanji('b0'), deckId: 'deck-birds' }]
     const queue = buildQueue({ decks, cards, memories: memories(), now: T0 })
     expect(queue.length).toBe(4)
     expect(new Set(queue.map((b) => b.cardId)).size).toBe(4)
@@ -206,7 +203,14 @@ describe('freeform decks', () => {
     id: 'm1',
     deckId: 'deck-misc',
     sides: [
-      { id: 'm1-a', fieldId: null, label: 'front', kind: 'text' as const, value: 'a', tested: true },
+      {
+        id: 'm1-a',
+        fieldId: null,
+        label: 'front',
+        kind: 'text' as const,
+        value: 'a',
+        tested: true,
+      },
       { id: 'm1-b', fieldId: null, label: 'back', kind: 'text' as const, value: 'b', tested: true },
       { id: 'm1-c', fieldId: null, label: 'src', kind: 'text' as const, value: 'c', tested: false },
     ],

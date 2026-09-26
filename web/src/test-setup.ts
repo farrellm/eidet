@@ -11,7 +11,7 @@ import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
 if (!window.matchMedia) {
-  window.matchMedia = ((query: string) => ({
+  window.matchMedia = (query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -20,7 +20,7 @@ if (!window.matchMedia) {
     addListener: () => {},
     removeListener: () => {},
     dispatchEvent: () => false,
-  })) as typeof window.matchMedia
+  })
 }
 
 // jsdom implements neither, and the FLIP in CueCard calls both.

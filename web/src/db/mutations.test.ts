@@ -10,8 +10,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import 'fake-indexeddb/auto'
 import type { Card, Deck } from '@eidet/shared'
 import { db } from './db.ts'
-import { deleteDeck } from './mutations.ts'
-import { newMemory } from '@eidet/shared'
+import { deleteDeck, resetSide, saveCard, updateDeck } from './mutations.ts'
+import { Rating, newMemory } from '@eidet/shared'
 
 const T0 = Date.UTC(2026, 0, 1)
 
@@ -74,5 +74,51 @@ describe('deleteDeck', () => {
     expect(queued).toContain('cards:c1')
     expect(queued).toContain('cards:c2')
     expect(queued).not.toContain('cards:c3')
+  })
+})
+
+describe('updateDeck', () => {
+  it('drops the schedule of a field switched to untested', async () => {
+    await updateDeck('d1', { fields: [{ ...deck.fields[0]!, tested: false }] }, T0 + 1000)
+    expect(await db.memories.get('c1-s1')).toBeUndefined()
+    expect(await db.memories.get('c3-s1')).toBeDefined()
+  })
+
+  it('schedules the sides of a field switched to tested', async () => {
+    await db.memories.clear()
+    await updateDeck('d1', { fields: deck.fields }, T0 + 1000)
+    expect(await db.memories.get('c1-s1')).toMatchObject({ reps: 0, due: T0 + 1000 })
+  })
+})
+
+describe('saveCard', () => {
+  it('gives a side back its schedule from the log rather than starting over', async () => {
+    await db.memories.clear()
+    const reviewed = { ...newMemory({ sideId: 'c1-s1', cardId: 'c1', deckId: 'd1' }, T0), reps: 4 }
+    await db.reviews.put({
+      id: 'r1',
+      sideId: 'c1-s1',
+      cardId: 'c1',
+      deckId: 'd1',
+      cueSideId: null,
+      rating: 3,
+      reviewedAt: T0,
+      memoryBefore: null,
+      memoryAfter: reviewed,
+      paramsHash: 'h',
+    })
+    await saveCard(card('c1'), T0 + 1000)
+    expect(await db.memories.get('c1-s1')).toEqual(reviewed)
+  })
+})
+
+describe('resetSide', () => {
+  it('records the reset as a queued review, so it syncs', async () => {
+    await resetSide('c1-s1', T0 + 5000)
+    const reviews = await db.reviews.where('sideId').equals('c1-s1').toArray()
+    expect(reviews).toHaveLength(1)
+    expect(reviews[0]).toMatchObject({ rating: Rating.Reset, cueSideId: null })
+    expect(await db.outbox.get(`reviews:${reviews[0]!.id}`)).toBeDefined()
+    expect(await db.memories.get('c1-s1')).toEqual(reviews[0]!.memoryAfter)
   })
 })
