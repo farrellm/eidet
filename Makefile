@@ -1,5 +1,5 @@
 # eidet — see DESIGN.md for what any of this means.
-.PHONY: dev web server build test bench e2e typecheck lint format deploy clean
+.PHONY: dev web server mcp build test bench e2e typecheck lint format deploy clean
 
 # Ports: 5175 web, 8083 server, 8091 deployed (tailnet :8445), 8087 Playwright.
 # 5173/5174/5176/5199/5273, 8080-8082/8090/8096/8173, Postgres 5432/5434/5435 and
@@ -15,6 +15,9 @@ web:
 
 server:
 	cd server && pnpm dev
+
+mcp:                       ## MCP server on stdio, syncing with EIDET_URL (default :8091)
+	cd mcp && pnpm start
 
 build:                     ## production bundle + service worker
 	cd web && pnpm build
