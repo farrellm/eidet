@@ -12,12 +12,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { DEFAULT_PARAMS, paramSet } from '@eidet/shared'
+import { DEFAULT_PARAMS } from '@eidet/shared'
 import { db } from '../db/db.ts'
-import { replayAll, setParams } from '../db/mutations.ts'
+import { changeParams } from '../db/mutations.ts'
 import { useCurrentParams } from '../db/useParams.ts'
 import { countOf, formatWhen } from '../ui/format.ts'
 import { useSyncStatus } from '../sync/SyncContext.tsx'
+import { useNow } from '../ui/useNow.ts'
 
 /** Retention targets worth offering. Below .8 you forget; above .95 you grind. */
 const RETENTIONS = [0.8, 0.85, 0.9, 0.95]
@@ -29,7 +30,7 @@ const STEP_CHOICES: { steps: string[]; label: string }[] = [
 
 export function Settings() {
   const navigate = useNavigate()
-  const now = Date.now()
+  const now = useNow()
   const { status, lastSyncedAt, syncNow } = useSyncStatus()
   const params = useCurrentParams()
   const counts = useLiveQuery(async () => ({
@@ -50,10 +51,8 @@ export function Settings() {
 
   const apply = async (retention: number, steps: string[]) => {
     setBusy(true)
-    const next = paramSet([...params.w], retention, steps, Date.now())
     try {
-      await setParams(next)
-      await replayAll(next)
+      await changeParams(params, { requestRetention: retention, learningSteps: steps })
     } finally {
       // A replay over a large log can fail part-way. Without this the screen
       // stays disabled until a reload, which reads as the app having hung.

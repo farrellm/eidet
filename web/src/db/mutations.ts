@@ -23,6 +23,7 @@ import {
   defaultParamSet,
   grade as gradeSide,
   newMemory,
+  paramSet,
   replay,
   resetReview,
   sideFilled,
@@ -340,6 +341,20 @@ export async function resetSide(sideId: SideId, now = Date.now()) {
     await db.reviews.put(result.review)
     await enqueue('reviews', result.review.id, now)
   })
+}
+
+/**
+ * Adopt new retention or learning steps: a new immutable set under the same
+ * weights, then a replay of every side's log under it (§2).
+ */
+export async function changeParams(
+  base: ParamSet,
+  change: Pick<ParamSet, 'requestRetention' | 'learningSteps'>,
+  now = Date.now(),
+) {
+  const next = paramSet([...base.w], change.requestRetention, change.learningSteps, now)
+  await setParams(next, now)
+  await replayAll(next)
 }
 
 /**

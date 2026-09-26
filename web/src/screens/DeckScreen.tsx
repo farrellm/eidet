@@ -19,13 +19,14 @@ import {
 import { db } from '../db/db.ts'
 import { startSession } from '../session/session.ts'
 import { Ramp, memoryRamp } from '../ui/Ramp.tsx'
+import { useNow } from '../ui/useNow.ts'
 import { useScrollMemory } from '../ui/useScrollMemory.ts'
 import { countOf } from '../ui/format.ts'
 
 export function DeckScreen() {
   const { deckId = '' } = useParams()
   const navigate = useNavigate()
-  const now = Date.now()
+  const now = useNow()
   const [query, setQuery] = useState('')
   const list = useScrollMemory(`scroll:deck:${deckId}`)
 
@@ -54,8 +55,8 @@ export function DeckScreen() {
     : cards
 
   const start = async () => {
-    const session = await startSession([deckId], Date.now())
-    if (session) navigate(`/review/${session.id}`)
+    const session = await startSession([deckId])
+    if (session) void navigate(`/review/${session.id}`)
   }
 
   return (

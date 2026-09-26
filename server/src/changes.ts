@@ -21,9 +21,12 @@ import type {
   Card,
   ChangeSet,
   Deck,
+  DeckField,
+  Memory,
   ParamSet,
   PullResponse,
   Review,
+  Side,
 } from '@eidet/shared'
 import { currentSeq, nextSeq, stmt, transaction } from './db.ts'
 
@@ -85,7 +88,7 @@ const toDeck = (r: DeckRow): Deck => ({
   id: r.id,
   name: r.name,
   mode: r.mode,
-  fields: JSON.parse(r.fields),
+  fields: JSON.parse(r.fields) as DeckField[],
   cuePreference: r.cuePreference,
   order: r.order,
   updatedAt: r.updatedAt,
@@ -96,7 +99,7 @@ const toDeck = (r: DeckRow): Deck => ({
 const toCard = (r: CardRow): Card => ({
   id: r.id,
   deckId: r.deckId,
-  sides: JSON.parse(r.sides),
+  sides: JSON.parse(r.sides) as Side[],
   updatedAt: r.updatedAt,
   deletedAt: r.deletedAt ?? null,
   seq: r.seq,
@@ -110,16 +113,16 @@ const toReview = (r: ReviewRow): Review => ({
   cueSideId: r.cueSideId ?? null,
   rating: r.rating,
   reviewedAt: r.reviewedAt,
-  memoryBefore: r.memoryBefore ? JSON.parse(r.memoryBefore) : null,
-  memoryAfter: JSON.parse(r.memoryAfter),
+  memoryBefore: r.memoryBefore ? (JSON.parse(r.memoryBefore) as Memory) : null,
+  memoryAfter: JSON.parse(r.memoryAfter) as Memory,
   paramsHash: r.paramsHash,
 })
 
 const toParamSet = (r: ParamSetRow): ParamSet => ({
   hash: r.hash,
-  w: JSON.parse(r.w),
+  w: JSON.parse(r.w) as number[],
   requestRetention: r.requestRetention,
-  learningSteps: JSON.parse(r.learningSteps),
+  learningSteps: JSON.parse(r.learningSteps) as string[],
   createdAt: r.createdAt,
 })
 

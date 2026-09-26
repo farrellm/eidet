@@ -205,7 +205,7 @@ describe('undo against a push in flight', () => {
     expect(await db.reviews.count()).toBe(0)
     // The push went ahead — there is a parameter set to send — but it carries
     // no review, because the one it would have sent no longer exists.
-    const body = JSON.parse(String(fetched.mock.calls[0]![1]!.body)) as { reviews: unknown[] }
+    const body = JSON.parse(fetched.mock.calls[0]![1]!.body as string) as { reviews: unknown[] }
     expect(body.reviews).toEqual([])
   })
 })

@@ -16,10 +16,11 @@ import { Ramp, memoryRamp, rampWord } from '../ui/Ramp.tsx'
 import { Cyanometer } from '../ui/Cyanometer.tsx'
 import { countOf, formatWhen } from '../ui/format.ts'
 import { useSyncStatus } from '../sync/SyncContext.tsx'
+import { useNow } from '../ui/useNow.ts'
 
 export function Today() {
   const navigate = useNavigate()
-  const now = Date.now()
+  const now = useNow()
   const { status, lastSyncedAt } = useSyncStatus()
   const decks = useLiveQuery(() => db.decks.filter((d) => d.deletedAt === null).sortBy('order'), [])
   const memories = useLiveQuery(() => db.memories.toArray(), [])
@@ -38,8 +39,8 @@ export function Today() {
     .reduce<number | null>((soonest, m) => (soonest === null || m.due < soonest ? m.due : soonest), null)
 
   const start = async () => {
-    const session = await startSession([], Date.now())
-    if (session) navigate(`/review/${session.id}`)
+    const session = await startSession()
+    if (session) void navigate(`/review/${session.id}`)
   }
 
   return (

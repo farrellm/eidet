@@ -48,7 +48,7 @@ async function readChanges(req: IncomingMessage): Promise<Partial<ChangeSet>> {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new HttpError(400, 'bad_changes', 'Expected a change set object.')
   }
-  return parsed as Partial<ChangeSet>
+  return parsed
 }
 
 /** A header as a non-negative integer, or 0 when absent or garbage. */

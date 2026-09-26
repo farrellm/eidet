@@ -23,9 +23,8 @@ let dir: string
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'eidet-app-'))
   const db = openDb(':memory:')
-  server = createServer(
-    createHandler({ db, blobs: new BlobStore(db, join(dir, 'blobs')), webRoot: dir }),
-  )
+  const handle = createHandler({ db, blobs: new BlobStore(db, join(dir, 'blobs')), webRoot: dir })
+  server = createServer((req, res) => void handle(req, res))
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 })

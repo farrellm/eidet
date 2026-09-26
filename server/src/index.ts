@@ -14,7 +14,8 @@ import { openDb } from './db.ts'
 
 const db = openDb(join(config.dataDir, 'eidet.db'))
 const blobs = new BlobStore(db, join(config.dataDir, 'blobs'))
-const server = createServer(createHandler({ db, blobs, webRoot: config.webRoot }))
+const handle = createHandler({ db, blobs, webRoot: config.webRoot })
+const server = createServer((req, res) => void handle(req, res))
 
 server.listen(config.port, config.host, () => {
   console.log(`eidet server on http://${config.host}:${config.port} (data: ${config.dataDir})`)

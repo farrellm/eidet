@@ -132,7 +132,7 @@ const statements = new WeakMap<DatabaseSync, Map<string, StatementSync>>()
  */
 export function stmt(db: DatabaseSync, sql: string): StatementSync {
   let cache = statements.get(db)
-  if (!cache) statements.set(db, (cache = new Map()))
+  if (!cache) statements.set(db, (cache = new Map<string, StatementSync>()))
   let prepared = cache.get(sql)
   if (!prepared) cache.set(sql, (prepared = db.prepare(sql)))
   return prepared

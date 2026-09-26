@@ -12,7 +12,6 @@ import {
   type Card as FsrsCard,
   type FSRS,
   type FSRSParameters,
-  type Grade as FsrsGrade,
 } from 'ts-fsrs'
 
 import {
@@ -20,7 +19,6 @@ import {
   type DeckId,
   type Grade,
   type Memory,
-  type MemoryState,
   type ParamSet,
   Rating,
   type Review,
@@ -149,7 +147,7 @@ function toFsrsCard(m: Memory): FsrsCard {
     lapses: m.lapses,
     state: m.state,
     ...(m.lastReview === null ? {} : { last_review: new Date(m.lastReview) }),
-  } as FsrsCard
+  }
 }
 
 function fromFsrsCard(c: FsrsCard, ids: SideIds): Memory {
@@ -163,7 +161,7 @@ function fromFsrsCard(c: FsrsCard, ids: SideIds): Memory {
     learningSteps: c.learning_steps,
     reps: c.reps,
     lapses: c.lapses,
-    state: c.state as MemoryState,
+    state: c.state,
     lastReview: c.last_review ? c.last_review.getTime() : null,
   }
 }
@@ -218,7 +216,7 @@ export function grade(args: {
   const { card } = schedulerFor(params, fuzz).next(
     toFsrsCard(memory),
     new Date(now),
-    rating as FsrsGrade,
+    rating,
   )
   const after = fromFsrsCard(card, idsOf(memory))
   return {
@@ -297,7 +295,7 @@ export function replay(
       memory = newMemory(ids, r.reviewedAt)
       continue
     }
-    const { card } = s.next(toFsrsCard(memory), new Date(r.reviewedAt), r.rating as FsrsGrade)
+    const { card } = s.next(toFsrsCard(memory), new Date(r.reviewedAt), r.rating)
     memory = fromFsrsCard(card, ids)
   }
   return memory

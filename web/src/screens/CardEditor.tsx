@@ -32,6 +32,7 @@ import {
 import { countOf, formatWhen } from '../ui/format.ts'
 import { Ramp, memoryRamp } from '../ui/Ramp.tsx'
 import { ImageSideInput } from '../ui/ImageSideInput.tsx'
+import { useNow } from '../ui/useNow.ts'
 
 export function CardEditor() {
   const { deckId = '', cardId = '' } = useParams()
@@ -76,18 +77,18 @@ export function CardEditor() {
   const save = async () => {
     await saveCard(card)
     await db.ui.delete(draftKey)
-    navigate(`/deck/${deckId}`)
+    void navigate(`/deck/${deckId}`)
   }
 
   const discard = async () => {
     await db.ui.delete(draftKey)
-    navigate(`/deck/${deckId}`)
+    void navigate(`/deck/${deckId}`)
   }
 
   const remove = async () => {
     await deleteCard(card.id)
     await db.ui.delete(draftKey)
-    navigate(`/deck/${deckId}`)
+    void navigate(`/deck/${deckId}`)
   }
 
   const usable = card.sides.filter(sideFilled).length >= 2
@@ -186,7 +187,7 @@ function SideEditor({
   onRemove?: (() => void) | undefined
 }) {
   const memory = useLiveQuery(() => db.memories.get(side.id), [side.id])
-  const now = Date.now()
+  const now = useNow()
 
   return (
     <section className="field">

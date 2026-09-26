@@ -74,6 +74,7 @@ export interface Deck {
   /** Empty for `freeform` decks. */
   fields: DeckField[]
   /** Pin a prompt direction, or let cue selection pick by retrievability. */
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- documents the sentinel
   cuePreference: FieldId | 'auto'
   order: number
   updatedAt: number

@@ -53,7 +53,7 @@ export function Review() {
   // lands on the identical screen with the identical queue position (§6).
   useEffect(() => {
     let live = true
-    loadSession(sessionId).then((s) => {
+    void loadSession(sessionId).then((s) => {
       if (!live) return
       if (s) setSession(s)
       else setMissing(true)
@@ -69,7 +69,7 @@ export function Review() {
   useEffect(() => {
     let live = true
     if (!session) return
-    canUndo(session).then((ok) => {
+    void canUndo(session).then((ok) => {
       if (live) setUndoable(ok)
     })
     return () => {

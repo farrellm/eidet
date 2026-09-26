@@ -55,14 +55,14 @@ export function DeckSettings() {
     const payload = {
       name: name.trim() || 'Untitled deck',
       fields: mode === 'schema' ? trimmed : [],
-      cuePreference: pinned as Deck['cuePreference'],
+      cuePreference: pinned,
     }
     if (isNew) {
       const id = await createDeck({ ...payload, mode })
-      navigate(`/deck/${id}`)
+      void navigate(`/deck/${id}`)
     } else {
-      await updateDeck(deckId!, payload)
-      navigate(`/deck/${deckId}`)
+      await updateDeck(deckId, payload)
+      void navigate(`/deck/${deckId}`)
     }
   }
 
@@ -208,7 +208,7 @@ export function DeckSettings() {
         ) : null}
 
         {!isNew && siblings && siblings.length > 1 ? (
-          <DeckOrder deckId={deckId!} decks={siblings} />
+          <DeckOrder deckId={deckId} decks={siblings} />
         ) : null}
       </div>
 
@@ -221,8 +221,8 @@ export function DeckSettings() {
           <button
             className="action action--quiet add-deck"
             onClick={async () => {
-              await deleteDeck(deckId!)
-              navigate('/')
+              await deleteDeck(deckId)
+              void navigate('/')
             }}
           >
             Delete deck
